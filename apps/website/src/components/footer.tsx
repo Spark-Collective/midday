@@ -57,7 +57,6 @@ export function Footer() {
               </h3>
               <div className="space-y-2.5">
                 {[
-                  { href: "/pricing", label: "Pricing" },
                   { href: "/download", label: "Download" },
                   { href: "/pre-accounting", label: "Pre-accounting" },
                   { href: "/integrations", label: "Apps & Integrations" },

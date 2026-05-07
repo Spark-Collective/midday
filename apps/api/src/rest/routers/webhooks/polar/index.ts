@@ -3,7 +3,6 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   getTeamById,
   getTeamOwnerContact,
-  hasTeamData,
   updateTeamById,
 } from "@midday/db/queries";
 import { triggerJob } from "@midday/job-client";
@@ -168,31 +167,6 @@ app.openapi(
           logger.info("Team subscription scheduled for cancellation", {
             teamId,
           });
-
-          try {
-            const [owner, teamHasData] = await Promise.all([
-              getTeamOwnerContact(db, teamId),
-              hasTeamData(db, teamId),
-            ]);
-
-            if (owner?.email && teamHasData) {
-              await triggerJob(
-                "cancellation-email-immediate",
-                {
-                  teamId,
-                  email: owner.email,
-                  fullName: owner.fullName ?? "there",
-                },
-                "teams",
-                { jobId: `cancellation-email-${teamId}` },
-              );
-            }
-          } catch (err) {
-            logger.error("Failed to trigger cancellation email", {
-              teamId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
 
           break;
         }

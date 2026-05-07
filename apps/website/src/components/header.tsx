@@ -244,11 +244,11 @@ export function Header({
             ? "opacity-100 visible bg-black/40"
             : "opacity-0 invisible pointer-events-none"
         }`}
-        style={{ top: "72px" }}
+        style={{ top: "108px" }}
       />
 
       {/* Navigation Bar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 w-full">
+      <nav className="fixed top-9 left-0 right-0 z-50 w-full">
         <div
           ref={headerRef}
           className={cn(
@@ -562,12 +562,6 @@ export function Header({
                 )}
               </div>
 
-              <Link
-                href="/pricing"
-                className="text-sm transition-colors text-muted-foreground hover:text-foreground"
-              >
-                Pricing
-              </Link>
               <Link
                 href="/story"
                 className="text-sm transition-colors text-muted-foreground hover:text-foreground"
@@ -958,25 +952,6 @@ export function Header({
                   </>
                 )}
               </div>
-              <Link
-                href="/pricing"
-                onTouchEnd={(e) => {
-                  const target = e.currentTarget;
-                  if (target) {
-                    target.blur();
-                    setTimeout(() => {
-                      if (target) {
-                        target.blur();
-                      }
-                    }, 100);
-                  }
-                }}
-                className="no-touch-active text-2xl font-sans transition-colors py-2 text-primary hover:text-primary xl:active:text-primary focus:outline-none focus-visible:outline-none touch-manipulation"
-                onClick={() => setIsMenuOpen(false)}
-                style={{ WebkitTapHighlightColor: "transparent" }}
-              >
-                Pricing
-              </Link>
               <Link
                 href="/story"
                 onTouchEnd={(e) => {

@@ -37,7 +37,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/mcp/raycast",
     "/mcp/zapier",
     "/pre-accounting",
-    "/pricing",
     "/policy",
     "/sdks",
     "/story",

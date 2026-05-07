@@ -11,7 +11,6 @@ const STEP_KEYS = [
   "reconciliation",
   "connect-mcp",
   "connect-chat",
-  "start-trial",
 ] as const;
 
 export type OnboardingStepKey = (typeof STEP_KEYS)[number];
@@ -40,7 +39,7 @@ export function useOnboardingStep(opts: OnboardingStepOptions) {
     ? "set-name"
     : !opts.hasTeam
       ? "create-team"
-      : "start-trial";
+      : "connect-chat";
 
   const minIndex = keyToIndex(minKey);
   const maxIndex = keyToIndex(maxKey);

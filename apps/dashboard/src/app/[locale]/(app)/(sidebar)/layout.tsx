@@ -5,7 +5,6 @@ import { Header } from "@/components/header";
 import { GlobalSheetsProvider } from "@/components/sheets/global-sheets-provider";
 import { Sidebar } from "@/components/sidebar";
 import { TimezoneDetector } from "@/components/timezone-detector";
-import { TrialGuard } from "@/components/trial-guard";
 import {
   batchPrefetch,
   getQueryClient,
@@ -42,20 +41,6 @@ export default async function Layout({
     redirect("/onboarding");
   }
 
-  // New teams created after this date must complete onboarding (incl. plan
-  // selection) before accessing the dashboard. Existing teams are unaffected.
-  // Teams with canceledAt set have already been through onboarding and had a
-  // subscription -- they should see the upgrade page, not the onboarding flow.
-  const ONBOARDING_ENFORCEMENT_DATE = "2026-03-24T00:00:00.000Z";
-  if (
-    user.team?.plan === "trial" &&
-    user.team?.createdAt &&
-    !user.team?.canceledAt &&
-    new Date(user.team.createdAt) >= new Date(ONBOARDING_ENFORCEMENT_DATE)
-  ) {
-    redirect("/onboarding?s=start-trial");
-  }
-
   return (
     <HydrateClient>
       <div className="relative">
@@ -63,9 +48,7 @@ export default async function Layout({
 
         <div className="md:ml-[70px] pb-4">
           <Header />
-          <TrialGuard plan={user.team?.plan} createdAt={user.team?.createdAt}>
-            <div className="px-4 md:px-8">{children}</div>
-          </TrialGuard>
+          <div className="px-4 md:px-8">{children}</div>
         </div>
 
         <ExportStatus />

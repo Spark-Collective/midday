@@ -46,7 +46,6 @@ import { ConnectMcpStep } from "./steps/connect-mcp-step";
 import { CreateTeamStep } from "./steps/create-team-step";
 import { ReconciliationStep } from "./steps/reconciliation-step";
 import { SetNameStep } from "./steps/set-name-step";
-import { StartTrialStep } from "./steps/start-trial-step";
 
 type StepConfig = {
   key: string;
@@ -411,15 +410,6 @@ export function OnboardingPage({
         canGoBack: true,
         trackEvent: LogEvents.OnboardingStepCompleted,
       },
-      // Step 8 — Plan selection + Polar checkout with CC-required trial
-      {
-        key: "start-trial",
-        animation: <DashboardImageAnimation />,
-        content: <StartTrialStep />,
-        overlay: true,
-        navigation: "none",
-        canGoBack: true,
-      },
     ],
     [
       user.id,
@@ -439,7 +429,7 @@ export function OnboardingPage({
 
   // Prefetch the dashboard route as soon as the user reaches the final step
   useEffect(() => {
-    if (currentStep?.key === "start-trial") {
+    if (currentStep?.key === "connect-chat") {
       router.prefetch("/");
     }
   }, [currentStep?.key, router]);
@@ -450,6 +440,10 @@ export function OnboardingPage({
 
   const handleNavigation = () => {
     trackNavigation(currentStep);
+    if (currentStep?.key === "connect-chat") {
+      router.push("/");
+      return;
+    }
     nextStep();
   };
 
@@ -574,7 +568,9 @@ export function OnboardingPage({
                         {currentStep.key === "connect-bank" ||
                         currentStep.key === "connect-inbox"
                           ? "Skip for now"
-                          : navLabel}
+                          : currentStep.key === "connect-chat"
+                            ? "Finish"
+                            : navLabel}
                       </button>
                     )}
                   </div>

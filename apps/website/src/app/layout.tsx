@@ -8,6 +8,7 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import type { ReactElement } from "react";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
+import { SunsetBanner } from "@/components/sunset-banner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { baseUrl } from "./sitemap";
 
@@ -138,8 +139,9 @@ export default function Layout({ children }: { children: ReactElement }) {
             enableSystem
             disableTransitionOnChange
           >
+            <SunsetBanner />
             <Header />
-            <main className="container mx-auto px-4 overflow-hidden md:overflow-visible">
+            <main className="container mx-auto px-4 pt-9 overflow-hidden md:overflow-visible">
               {children}
             </main>
             <Footer />

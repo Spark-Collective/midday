@@ -48,9 +48,6 @@ const TestimonialsSection = dynamic(
 const IntegrationsSection = dynamic(() =>
   import("./sections/integrations-section").then((m) => m.IntegrationsSection),
 );
-const PricingSection = dynamic(() =>
-  import("./sections/pricing-section").then((m) => m.PricingSection),
-);
 
 // Static features data - moved outside component to avoid recreation on each render
 const features = [
@@ -269,10 +266,10 @@ export function StartPage() {
             <div className="flex flex-col items-center w-full text-center space-y-6 lg:space-y-8">
               <div className="space-y-5 lg:space-y-6 max-w-3xl 3xl:max-w-5xl mx-auto px-2 lg:px-0">
                 <Link
-                  href="/computer"
+                  href="/updates/joining-ramp"
                   className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-border text-xs font-sans text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
                 >
-                  Introducing Midday Computer
+                  Midday is joining Ramp
                   <span aria-hidden="true">&rarr;</span>
                 </Link>
 
@@ -922,14 +919,6 @@ export function StartPage() {
 
       {/* Integrations Section */}
       <IntegrationsSection />
-
-      {/* Divider */}
-      <div className="max-w-[1400px] mx-auto">
-        <div className="h-px w-full border-t border-border" />
-      </div>
-
-      {/* Pricing Section */}
-      <PricingSection />
     </div>
   );
 }

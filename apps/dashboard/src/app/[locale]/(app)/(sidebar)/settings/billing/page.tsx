@@ -1,7 +1,8 @@
+import { Card } from "@midday/ui/card";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ManageSubscription } from "@/components/manage-subscription";
 import { Orders } from "@/components/orders";
-import { Plans } from "@/components/plans";
 import { getQueryClient, prefetch, trpc } from "@/trpc/server";
 
 export const metadata: Metadata = {
@@ -31,9 +32,25 @@ export default async function Billing() {
 
       {team?.plan === "trial" && (
         <div>
-          <h2 className="font-serif text-2xl text-foreground mb-4">Plans</h2>
+          <h2 className="text-lg font-medium leading-none tracking-tight mb-4">
+            Subscription
+          </h2>
 
-          <Plans />
+          <Card className="flex flex-col gap-2 p-4">
+            <p className="text-sm font-medium">Midday is joining Ramp</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              We're winding Midday down over the next 90 days. Your account
+              stays fully active during that time — there's nothing to
+              subscribe to and you won't be charged. Read more on the{" "}
+              <Link
+                href="https://midday.ai/updates/joining-ramp"
+                className="underline hover:text-foreground transition-colors"
+              >
+                announcement post
+              </Link>
+              .
+            </p>
+          </Card>
         </div>
       )}
 
