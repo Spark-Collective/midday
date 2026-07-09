@@ -55,3 +55,30 @@ jobs:
           tags: ghcr.io/spark-collective/midday-${{ matrix.app }}:main-${{ matrix.arch }}
           cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}-${{ matrix.arch }}
+
+  dashboard:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stamp git sha
+        run: git rev-parse --short HEAD > .git-commit-sha
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/dashboard/Dockerfile
+          push: true
+          tags: ghcr.io/spark-collective/midday-dashboard:main-arm64
+          cache-from: type=gha,scope=dashboard-arm64
+          cache-to: type=gha,mode=max,scope=dashboard-arm64
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=https://uzdlmwhvlzmjzkjcjgut.supabase.co
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJpc3MiOiAic3VwYWJhc2UiLCAicmVmIjogInV6ZGxtd2h2bHptanpramNqZ3V0IiwgInJvbGUiOiAiYW5vbiIsICJpYXQiOiAxNzgzNTgxNTY3LCAiZXhwIjogMjA5ODk0MTU2N30.BcAQ4DjrkrFSrk_BqJr_eq4LHcppNV30MUJ6d4lXwUM
+            NEXT_PUBLIC_SUPABASE_ID=uzdlmwhvlzmjzkjcjgut
+            NEXT_PUBLIC_URL=https://ops.sparkcollective.be
+            NEXT_PUBLIC_API_URL=https://ops-api.sparkcollective.be
