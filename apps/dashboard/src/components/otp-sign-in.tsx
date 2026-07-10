@@ -35,7 +35,11 @@ type Props = {
 };
 
 export function OTPSignIn({ className }: Props) {
-  const verifyOtp = useAction(verifyOtpAction);
+  // spark: reset the spinner when verification fails — isVerifying was never
+  // cleared, locking the UI on "Verifying..." with no error and Resend disabled.
+  const verifyOtp = useAction(verifyOtpAction, {
+    onError: () => setIsVerifying(false),
+  });
   const [isLoading, setLoading] = useState(false);
   const [isSent, setSent] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -107,12 +111,22 @@ export function OTPSignIn({ className }: Props) {
           )}
         </div>
 
+        {verifyOtp.hasErrored && !isVerifying && (
+          <p className="text-sm text-destructive">
+            Invalid or expired code. Use the code from the newest email, or
+            resend.
+          </p>
+        )}
+
         <div className="flex space-x-2">
           <span className="text-sm text-[#878787]">
             Didn't receive the email?
           </span>
           <button
-            onClick={() => setSent(false)}
+            onClick={() => {
+              verifyOtp.reset();
+              setSent(false);
+            }}
             type="button"
             className="text-sm text-primary underline font-medium"
             disabled={verifyOtp.isExecuting || isVerifying}

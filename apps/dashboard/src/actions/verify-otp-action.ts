@@ -21,11 +21,17 @@ export const verifyOtpAction = actionClient
   .action(async ({ parsedInput: { email, token, redirectTo } }) => {
     const supabase = await createClient();
 
-    await supabase.auth.verifyOtp({
+    // spark: surface verification failures instead of ignoring them — an invalid
+    // or expired code otherwise fell through and left the client on "Verifying...".
+    const { error: verifyError } = await supabase.auth.verifyOtp({
       email,
       token,
       type: "email",
     });
+
+    if (verifyError) {
+      throw new Error("Invalid or expired code");
+    }
 
     // Validate that the session was actually established (similar to OAuth callback)
     const {
