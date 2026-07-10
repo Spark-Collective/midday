@@ -16,7 +16,7 @@ import { Spinner } from "@midday/ui/spinner";
 import { SubmitButton } from "@midday/ui/submit-button";
 import { useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod/v3";
 import { verifyOtpAction } from "@/actions/verify-otp-action";
@@ -35,15 +35,22 @@ type Props = {
 };
 
 export function OTPSignIn({ className }: Props) {
-  // spark: reset the spinner when verification fails — isVerifying was never
-  // cleared, locking the UI on "Verifying..." with no error and Resend disabled.
+  // spark: reset the spinner AND clear the field when verification fails —
+  // isVerifying was never cleared (eternal "Verifying..."), and an uncontrolled
+  // input let browser autofill restore the failed code on remount, auto-
+  // resubmitting it in a loop and burning every fresh code.
   const verifyOtp = useAction(verifyOtpAction, {
-    onError: () => setIsVerifying(false),
+    onError: () => {
+      setIsVerifying(false);
+      setOtpValue("");
+    },
   });
   const [isLoading, setLoading] = useState(false);
   const [isSent, setSent] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
   const [email, setEmail] = useState<string>();
+  const lastFailedToken = useRef<string | null>(null);
   const supabase = createClient();
   const searchParams = useSearchParams();
 
@@ -67,6 +74,14 @@ export function OTPSignIn({ className }: Props) {
 
   async function onComplete(token: string) {
     if (!email) return;
+
+    // spark: never resubmit a token that already failed (autofill re-injection
+    // otherwise loops the same dead code).
+    if (token === lastFailedToken.current) {
+      setOtpValue("");
+      return;
+    }
+    lastFailedToken.current = token;
 
     setIsVerifying(true);
 
@@ -94,6 +109,8 @@ export function OTPSignIn({ className }: Props) {
             <InputOTP
               maxLength={6}
               autoFocus
+              value={otpValue}
+              onChange={setOtpValue}
               onComplete={onComplete}
               disabled={verifyOtp.isExecuting || isVerifying}
               render={({ slots }) => (
@@ -125,6 +142,8 @@ export function OTPSignIn({ className }: Props) {
           <button
             onClick={() => {
               verifyOtp.reset();
+              lastFailedToken.current = null;
+              setOtpValue("");
               setSent(false);
             }}
             type="button"
