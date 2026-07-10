@@ -78,7 +78,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=dashboard-arm64
           build-args: |
             NEXT_PUBLIC_SUPABASE_URL=https://uzdlmwhvlzmjzkjcjgut.supabase.co
-            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiAiSFMyNTYiLCAidHlwIjogIkpXVCJ9.eyJpc3MiOiAic3VwYWJhc2UiLCAicmVmIjogInV6ZGxtd2h2bHptanpramNqZ3V0IiwgInJvbGUiOiAiYW5vbiIsICJpYXQiOiAxNzgzNTgxNTY3LCAiZXhwIjogMjA5ODk0MTU2N30.BcAQ4DjrkrFSrk_BqJr_eq4LHcppNV30MUJ6d4lXwUM
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_slrH7uz8CIiS7k8DTGG2Pw_H-1vGkow
             NEXT_PUBLIC_SUPABASE_ID=uzdlmwhvlzmjzkjcjgut
             NEXT_PUBLIC_URL=https://ops.sparkcollective.be
             NEXT_PUBLIC_API_URL=https://ops-api.sparkcollective.be
