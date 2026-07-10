@@ -9,6 +9,7 @@ on:
     paths:
       - "apps/api/**"
       - "apps/worker/**"
+      - "apps/dashboard/**"
       - "packages/**"
       - "bunfig.toml"
       - "package.json"
