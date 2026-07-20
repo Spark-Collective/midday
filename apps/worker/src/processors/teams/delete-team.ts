@@ -71,7 +71,8 @@ export class DeleteTeamProcessor extends BaseProcessor<DeleteTeamPayload> {
             | "gocardless"
             | "teller"
             | "plaid"
-            | "enablebanking",
+            | "enablebanking"
+            | "ponto",
           accessToken: connection.accessToken ?? undefined,
         });
         return true;

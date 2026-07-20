@@ -8,7 +8,7 @@ export const createBankConnectionSchema = z.object({
   accessToken: z.string().nullable().optional(), // Teller
   enrollmentId: z.string().nullable().optional(), // Teller
   referenceId: z.string().nullable().optional(), // GoCardLess
-  provider: z.enum(["gocardless", "teller", "plaid", "enablebanking"]),
+  provider: z.enum(["gocardless", "teller", "plaid", "enablebanking", "ponto"]),
   accounts: z.array(
     z.object({
       accountId: z.string(),

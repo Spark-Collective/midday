@@ -113,7 +113,7 @@ export type UpsertInstitutionData = {
   id: string;
   name: string;
   logo: string | null;
-  provider: "gocardless" | "plaid" | "teller" | "enablebanking";
+  provider: "gocardless" | "plaid" | "teller" | "enablebanking" | "ponto";
   countries: string[];
   availableHistory: number | null;
   maximumConsentValidity: number | null;

@@ -36,7 +36,8 @@ export const syncConnection = schemaTask({
           | "gocardless"
           | "plaid"
           | "teller"
-          | "enablebanking",
+          | "enablebanking"
+          | "ponto",
         accessToken: data.access_token ?? undefined,
       });
 

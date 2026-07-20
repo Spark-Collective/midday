@@ -65,6 +65,7 @@ export const bankProvidersEnum = pgEnum("bank_providers", [
   "plaid",
   "teller",
   "enablebanking",
+  "ponto",
 ]);
 
 export const connectionStatusEnum = pgEnum("connection_status", [

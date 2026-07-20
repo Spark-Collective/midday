@@ -5,6 +5,7 @@ export const providerSchema = z.enum([
   "teller",
   "plaid",
   "enablebanking",
+  "ponto",
 ]);
 
 export const accountTypeSchema = z.enum([
