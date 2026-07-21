@@ -1,4 +1,5 @@
 import { createClient } from "@midday/supabase/job";
+import { transactionsQueue } from "../../queues/transactions";
 import { trpc } from "@midday/trpc";
 import type { Job } from "bullmq";
 import { BaseProcessor } from "../base";
@@ -95,6 +96,7 @@ export class BankSyncSchedulerProcessor extends BaseProcessor<BankSyncPayload> {
           status: string;
         }>;
 
+        const upsertedIds: string[] = [];
         if (txs.length > 0) {
           const rows = txs.map((t) => ({
             name: t.name,
@@ -121,6 +123,16 @@ export class BankSyncSchedulerProcessor extends BaseProcessor<BankSyncPayload> {
             .throwOnError();
 
           transactionsUpserted += upserted?.length ?? 0;
+          upsertedIds.push(...(upserted ?? []).map((r: { id: string }) => r.id));
+        }
+
+        // Chain enrichment for new rows (small batches: one bad row otherwise
+        // fails a whole batch and leaves the rest uncategorized).
+        for (let i = 0; i < upsertedIds.length; i += 10) {
+          await transactionsQueue.add("enrich-transactions", {
+            transactionIds: upsertedIds.slice(i, i + 10),
+            teamId: account.team_id,
+          });
         }
 
         await supabase
