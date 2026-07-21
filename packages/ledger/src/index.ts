@@ -1,4 +1,17 @@
 export {
+  disposeAsset,
+  postAmortization,
+  type RegisterAmortizationInput,
+  registerAmortization,
+  scheduleAmountCents,
+} from "./amortization.js";
+export {
+  type CloseReport,
+  closePeriod,
+  type RevaluationResult,
+  revaluePeriod,
+} from "./close.js";
+export {
   type BuildOpeningInput,
   buildOpeningLines,
   type OpenItem,

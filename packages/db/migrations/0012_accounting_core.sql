@@ -92,7 +92,7 @@ CREATE TABLE "journal_entries" (
   "source_id" uuid,
   "source_version" integer DEFAULT 1 NOT NULL, -- ponytail: always 1 today; versioned re-posting is the M3+ writer
   "reverses_entry_id" uuid REFERENCES "journal_entries"("id"),
-  "is_revaluation" boolean DEFAULT false NOT NULL, -- ponytail: writer arrives with M5 revaluePeriod
+  "is_revaluation" boolean DEFAULT false NOT NULL, -- written by revaluePeriod (M5)
   "narration" text,
   "posted_at" timestamp with time zone,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL

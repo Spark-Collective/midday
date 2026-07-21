@@ -56,6 +56,8 @@ export type PostEntryInput = {
   sourceVersion?: number;
   /** Set on a reversal entry; points at the entry being reversed. */
   reversesEntryId?: string;
+  /** Set on period-end FX revaluation entries and their auto-reversing mirrors. */
+  isRevaluation?: boolean;
   /** Default true. Callers that already run a transaction (reconcile, reverse)
    *  pass false so the whole operation stays atomic. */
   manageTransaction?: boolean;
@@ -186,8 +188,8 @@ export async function postEntry(
 
     const entryRes = await client.query(
       `INSERT INTO journal_entries
-         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, reverses_entry_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, reverses_entry_id, is_revaluation)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         input.teamId,
@@ -199,6 +201,7 @@ export async function postEntry(
         input.sourceVersion ?? 1,
         input.narration ?? null,
         input.reversesEntryId ?? null,
+        input.isRevaluation ?? false,
       ],
     );
     const entryId: string = entryRes.rows[0].id;

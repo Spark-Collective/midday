@@ -4595,6 +4595,84 @@ export const reconciliations = pgTable(
   ],
 );
 
+// One amortization engine for assets AND deferrals (S4). The schedule is
+// deterministic from (startDate, months, amount, residual); amortization_lines
+// records what was posted per period.
+export const amortizationKindEnum = pgEnum("amortization_kind", [
+  "asset",
+  "deferral",
+]);
+
+export const amortizations = pgTable(
+  "amortizations",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    kind: amortizationKindEnum().notNull(),
+    name: text().notNull(),
+    chargeAccountId: uuid("charge_account_id")
+      .notNull()
+      .references(() => glAccounts.id),
+    balanceAccountId: uuid("balance_account_id")
+      .notNull()
+      .references(() => glAccounts.id),
+    assetAccountId: uuid("asset_account_id").references(() => glAccounts.id),
+    sourceRef: text("source_ref"),
+    startDate: date("start_date").notNull(),
+    months: integer().notNull(),
+    amount: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    residualValue: numericCasted("residual_value", { precision: 10, scale: 2 })
+      .default(0)
+      .notNull(),
+    status: text().default("active").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("amortizations_team_idx").on(table.teamId),
+    pgPolicy("Team members can manage amortizations", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+export const amortizationLines = pgTable(
+  "amortization_lines",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    amortizationId: uuid("amortization_id")
+      .notNull()
+      .references(() => amortizations.id, { onDelete: "cascade" }),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => fiscalPeriods.id),
+    amount: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    entryId: uuid("entry_id"),
+  },
+  (table) => [
+    unique("amortization_lines_item_period_unique").on(
+      table.amortizationId,
+      table.periodId,
+    ),
+    index("amortization_lines_team_idx").on(table.teamId),
+    pgPolicy("Team members can manage amortization lines", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
 export const reconciliationAllocations = pgTable(
   "reconciliation_allocations",
   {

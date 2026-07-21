@@ -68,6 +68,19 @@ const SYSTEM_ACCOUNTS: Array<
   ],
   ["140000", "Overgedragen winst", "equity", "retained_earnings"],
   ["700000", "Verkopen en diensten", "income", "sales_revenue"],
+  ["490000", "Over te dragen kosten", "asset", "deferred_charges"],
+  [
+    "663000",
+    "Minderwaarden op realisatie vaste activa",
+    "expense",
+    "asset_disposal_loss",
+  ],
+  [
+    "763000",
+    "Meerwaarden op realisatie vaste activa",
+    "income",
+    "asset_disposal_gain",
+  ],
 ];
 
 // Belgian VAT codes, direction-aware per S7 (credit notes report in their own

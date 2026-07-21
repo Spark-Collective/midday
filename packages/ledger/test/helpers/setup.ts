@@ -22,15 +22,24 @@ const M13 = readFileSync(
   join(import.meta.dir, "../../../db/migrations/0013_accounting_posting.sql"),
   "utf8",
 );
+const M14 = readFileSync(
+  join(
+    import.meta.dir,
+    "../../../db/migrations/0014_accounting_amortization.sql",
+  ),
+  "utf8",
+);
 
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
-  DROP TABLE IF EXISTS reconciliation_allocations, reconciliations, vu_rates,
+  DROP VIEW IF EXISTS v_verworpen_uitgaven;
+  DROP TABLE IF EXISTS amortization_lines, amortizations,
+    reconciliation_allocations, reconciliations, vu_rates,
     tax_codes, ledger_lines, journal_entries, fiscal_periods, journals,
     gl_accounts, invoices, transactions, transaction_categories, bank_accounts CASCADE;
   DROP TYPE IF EXISTS gl_account_type, journal_type, fiscal_period_status,
     journal_entry_status, journal_entry_source, ledger_party_type, tax_kind,
-    invoice_type CASCADE;
+    invoice_type, amortization_kind CASCADE;
   CREATE SCHEMA IF NOT EXISTS private;
   CREATE OR REPLACE FUNCTION private.get_teams_for_authenticated_user()
     RETURNS SETOF uuid LANGUAGE sql
@@ -71,6 +80,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(BOOTSTRAP);
   await db.query(M12);
   await db.query(M13);
+  await db.query(M14);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );
