@@ -2,6 +2,7 @@ import { getInvoiceById, updateInvoice } from "@midday/db/queries";
 import { Notifications } from "@midday/notifications";
 import { createClient } from "@midday/supabase/job";
 import type { Job } from "bullmq";
+import { invoicesQueue } from "../../queues/invoices";
 import type { SendInvoiceEmailPayload } from "../../schemas/invoices";
 import { getDb } from "../../utils/db";
 import { BaseProcessor } from "../base";
@@ -139,6 +140,10 @@ export class SendInvoiceEmailProcessor extends BaseProcessor<SendInvoiceEmailPay
       sentTo: customerEmail,
       sentAt: new Date().toISOString(),
     });
+
+    // spark: Peppol leg — the operator's "Create & Send" is the approval.
+    // The processor itself skips customers without a Belgian enterprise number.
+    await invoicesQueue.add("peppol-send-invoice", { invoiceId });
 
     if (!updated) {
       this.logger.error("Failed to update invoice status after email", {
