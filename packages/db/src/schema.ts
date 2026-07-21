@@ -1158,7 +1158,9 @@ export const exchangeRates = pgTable(
   {
     id: uuid().defaultRandom().primaryKey().notNull(),
     base: text(),
-    rate: numericCasted({ precision: 10, scale: 2 }),
+    // numeric(20,10): FX rates need real precision (EUR/USD 0.9234 stored as
+    // 0.92 is a 1.5% posting error). Widened in 0012_accounting_core.sql (F1).
+    rate: numericCasted({ precision: 20, scale: 10 }),
     target: text(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }),
   },
@@ -4214,3 +4216,430 @@ export const insightUserStatusRelations = relations(
     }),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Accounting module (double-entry general ledger)
+//
+// Design: docs/architecture/midday-accounting-implementation-plan-2026-07-20.md
+// (spark-workspace). Documents (invoices, transactions) stay the UX; a posting
+// engine (@midday/accounting) writes balanced, immutable entries into this
+// ledger. All hard invariants (balance-on-post, immutability of posted lines,
+// period locks, account-currency locks) are enforced IN POSTGRES by triggers in
+// migrations/0012_accounting_core.sql — this file is the drizzle mirror.
+// ---------------------------------------------------------------------------
+
+export const glAccountTypeEnum = pgEnum("gl_account_type", [
+  "asset",
+  "liability",
+  "equity",
+  "income",
+  "expense",
+]);
+
+export const journalTypeEnum = pgEnum("journal_type", [
+  "sales",
+  "purchase",
+  "bank",
+  "cash",
+  "general",
+]);
+
+export const fiscalPeriodStatusEnum = pgEnum("fiscal_period_status", [
+  "open",
+  "closed",
+]);
+
+export const journalEntryStatusEnum = pgEnum("journal_entry_status", [
+  "draft",
+  "posted",
+  "reversed",
+]);
+
+export const journalEntrySourceEnum = pgEnum("journal_entry_source", [
+  "invoice",
+  "transaction",
+  "reconciliation",
+  "revaluation",
+  "depreciation",
+  "opening",
+  "manual",
+]);
+
+export const ledgerPartyTypeEnum = pgEnum("ledger_party_type", [
+  "customer",
+  "supplier",
+  "employee",
+]);
+
+export const taxKindEnum = pgEnum("tax_kind", [
+  "standard",
+  "reduced",
+  "zero",
+  "intra_eu",
+  "export",
+  "reverse_charge",
+  "exempt",
+]);
+
+// Chart of accounts (Belgian PCMN/MAR). Tree via parentId; group nodes take no
+// postings (enforced by trigger). `systemKey` lets posting rules resolve
+// accounts ("trade_debtors", "vat_deductible", ...) without hardcoding codes.
+export const glAccounts = pgTable(
+  "gl_accounts",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    code: text().notNull(),
+    name: text().notNull(),
+    type: glAccountTypeEnum().notNull(),
+    parentId: uuid("parent_id"),
+    isGroup: boolean("is_group").default(false).notNull(),
+    // When set, every ledger line on this account must be in this currency.
+    currency: text(),
+    systemKey: text("system_key"),
+    // Belgian fiscal layer: default VAT-deductible % for costs on this account
+    // (null = 100). Income-tax deductibility is per-year via vuRates keyed on
+    // vuCategory — never a flat percentage here (rates change yearly).
+    vatDeductiblePct: numericCasted("vat_deductible_pct", {
+      precision: 5,
+      scale: 2,
+    }),
+    vuCategory: text("vu_category"),
+    active: boolean().default(true).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("gl_accounts_team_code_unique").on(table.teamId, table.code),
+    index("gl_accounts_team_idx").on(table.teamId),
+    uniqueIndex("gl_accounts_team_system_key_idx")
+      .on(table.teamId, table.systemKey)
+      .where(sql`system_key IS NOT NULL`),
+    pgPolicy("Team members can manage gl accounts", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// Books (dagboeken). Mirrors Belgian practice: per-bank journal, cash/card,
+// purchases, sales, general (± VAT).
+export const journals = pgTable(
+  "journals",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    code: text().notNull(),
+    name: text().notNull(),
+    type: journalTypeEnum().notNull(),
+    // Bank journals bind to a Midday bank account (no FK on purpose: the
+    // accounting core must not depend on banking rows existing).
+    bankAccountId: uuid("bank_account_id"),
+    active: boolean().default(true).notNull(),
+  },
+  (table) => [
+    unique("journals_team_code_unique").on(table.teamId, table.code),
+    index("journals_team_idx").on(table.teamId),
+    pgPolicy("Team members can manage journals", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+export const fiscalPeriods = pgTable(
+  "fiscal_periods",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    year: integer().notNull(),
+    month: integer().notNull(),
+    status: fiscalPeriodStatusEnum().default("open").notNull(),
+  },
+  (table) => [
+    unique("fiscal_periods_team_year_month_unique").on(
+      table.teamId,
+      table.year,
+      table.month,
+    ),
+    index("fiscal_periods_team_idx").on(table.teamId),
+    pgPolicy("Team members can manage fiscal periods", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// Entry header ("move"). Immutable once posted; corrections happen via a
+// reversal entry that points back through reversesEntryId.
+export const journalEntries = pgTable(
+  "journal_entries",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    journalId: uuid("journal_id")
+      .notNull()
+      .references(() => journals.id),
+    // Per-journal gapless sequence, assigned on post (legal requirement for
+    // sales); drafts never consume a number.
+    entryNumber: text("entry_number"),
+    date: date().notNull(),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => fiscalPeriods.id),
+    status: journalEntryStatusEnum().default("draft").notNull(),
+    sourceType: journalEntrySourceEnum("source_type"),
+    sourceId: uuid("source_id"),
+    sourceVersion: integer("source_version").default(1).notNull(),
+    reversesEntryId: uuid("reverses_entry_id"),
+    isRevaluation: boolean("is_revaluation").default(false).notNull(),
+    narration: text(),
+    postedAt: timestamp("posted_at", { withTimezone: true, mode: "string" }),
+    postedBy: uuid("posted_by"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("journal_entries_team_date_idx").on(table.teamId, table.date),
+    index("journal_entries_journal_idx").on(table.journalId),
+    // Idempotent posting: one posted entry per source document version.
+    uniqueIndex("uq_journal_entries_source")
+      .on(table.teamId, table.sourceType, table.sourceId, table.sourceVersion)
+      .where(sql`status = 'posted' AND source_id IS NOT NULL`),
+    uniqueIndex("uq_journal_entries_number")
+      .on(table.journalId, table.entryNumber)
+      .where(sql`entry_number IS NOT NULL`),
+    pgPolicy("Team members can manage journal entries", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// The ledger. debit/credit are ALWAYS in the team's functional currency;
+// amountCurrency + fxRate carry the transaction currency (multi-currency per
+// the plan §1). Append-only once the entry is posted (DB trigger).
+export const ledgerLines = pgTable(
+  "ledger_lines",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => journalEntries.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => glAccounts.id),
+    debit: numericCasted({ precision: 10, scale: 2 }).default(0).notNull(),
+    credit: numericCasted({ precision: 10, scale: 2 }).default(0).notNull(),
+    currency: text().notNull(),
+    amountCurrency: numericCasted("amount_currency", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    fxRate: numericCasted("fx_rate", { precision: 20, scale: 10 })
+      .default(1)
+      .notNull(),
+    partyType: ledgerPartyTypeEnum("party_type"),
+    partyId: uuid("party_id"),
+    taxCodeId: uuid("tax_code_id"),
+    taxBase: numericCasted("tax_base", { precision: 10, scale: 2 }),
+    // Belgian fiscal layer (§5b): snapshot of the applied VAT-deductible %,
+    // and a rare per-line override of the income-tax deductibility.
+    vatDeductiblePctUsed: numericCasted("vat_deductible_pct_used", {
+      precision: 5,
+      scale: 2,
+    }),
+    itaxDeductiblePctOverride: numericCasted("itax_deductible_pct_override", {
+      precision: 5,
+      scale: 2,
+    }),
+    reconciliationId: uuid("reconciliation_id"),
+    analytic: jsonb(),
+    description: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("ledger_lines_entry_idx").on(table.entryId),
+    index("ledger_lines_team_account_idx").on(table.teamId, table.accountId),
+    index("ledger_lines_party_idx").on(
+      table.teamId,
+      table.partyType,
+      table.partyId,
+    ),
+    index("ledger_lines_reconciliation_idx").on(table.reconciliationId),
+    pgPolicy("Team members can manage ledger lines", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// Belgian VAT codes. `grids` maps the periodic-return boxes, direction-aware
+// (S7: credit notes report in their own grids, never netted):
+// { invoice: { base: ["03"], tax: ["54"] }, creditNote: { base: ["49"], tax: ["64"] } }
+// `verified` stays false until the mapping is checked against the accounting-kb.
+export const taxCodes = pgTable(
+  "tax_codes",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    code: text().notNull(),
+    name: text().notNull(),
+    rate: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    kind: taxKindEnum().notNull(),
+    // VAT control account (411x deductible / 451x payable). No FK to avoid a
+    // circular dependency with glAccounts; resolved by systemKey at posting.
+    accountId: uuid("account_id"),
+    grids: jsonb(),
+    verified: boolean().default(false).notNull(),
+    active: boolean().default(true).notNull(),
+  },
+  (table) => [
+    unique("tax_codes_team_code_unique").on(table.teamId, table.code),
+    pgPolicy("Team members can manage tax codes", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// Verworpen-uitgaven (disallowed expenses) rates per fiscal year (§11: adopted
+// from Odoo's date-dependent disallowed-expense rates; a flat pct would rot).
+export const vuRates = pgTable(
+  "vu_rates",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    category: text().notNull(),
+    fiscalYear: integer("fiscal_year").notNull(),
+    deductiblePct: numericCasted("deductible_pct", {
+      precision: 5,
+      scale: 2,
+    }).notNull(),
+  },
+  (table) => [
+    unique("vu_rates_team_category_year_unique").on(
+      table.teamId,
+      table.category,
+      table.fiscalYear,
+    ),
+    pgPolicy("Team members can manage vu rates", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+// Open-item matching. Pairwise allocations (S6, Odoo partial-reconcile model):
+// a line's residual = its amount − Σ allocations. reconciliations groups fully
+// matched sets for display; the allocations are the source of truth.
+export const reconciliations = pgTable(
+  "reconciliations",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    status: text().default("open").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    pgPolicy("Team members can manage reconciliations", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+export const reconciliationAllocations = pgTable(
+  "reconciliation_allocations",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    debitLineId: uuid("debit_line_id")
+      .notNull()
+      .references(() => ledgerLines.id),
+    creditLineId: uuid("credit_line_id")
+      .notNull()
+      .references(() => ledgerLines.id),
+    amount: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("reconciliation_allocations_debit_idx").on(table.debitLineId),
+    index("reconciliation_allocations_credit_idx").on(table.creditLineId),
+    pgPolicy("Team members can manage reconciliation allocations", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+);
+
+export const journalEntriesRelations = relations(
+  journalEntries,
+  ({ one, many }) => ({
+    journal: one(journals, {
+      fields: [journalEntries.journalId],
+      references: [journals.id],
+    }),
+    period: one(fiscalPeriods, {
+      fields: [journalEntries.periodId],
+      references: [fiscalPeriods.id],
+    }),
+    lines: many(ledgerLines),
+  }),
+);
+
+export const ledgerLinesRelations = relations(ledgerLines, ({ one }) => ({
+  entry: one(journalEntries, {
+    fields: [ledgerLines.entryId],
+    references: [journalEntries.id],
+  }),
+  account: one(glAccounts, {
+    fields: [ledgerLines.accountId],
+    references: [glAccounts.id],
+  }),
+}));
