@@ -303,6 +303,25 @@ describe("reverseEntry", () => {
     expect(ptr.rows[0].journal_entry_id).toBeNull();
     const second = await postInvoice(db, { invoiceId: inv.rows[0].id });
     expect(second.entryId).not.toBe(first.entryId);
+
+    // Reports must keep the reversed original: TB sees original + mirror +
+    // re-post = one invoice's worth of revenue, not a dropped pair.
+    const { getTrialBalance } = await import("../src/reports.js");
+    const tb = await getTrialBalance(db, { teamId });
+    expect(tb.reduce((s, r) => s + Math.round(r.balance * 100), 0)).toBe(0);
+
+    // The reversed original's AR line reconciles against its mirror.
+    const arLines = await db.query(
+      `SELECT ll.id FROM ledger_lines ll
+         JOIN gl_accounts a ON a.id = ll.account_id
+        WHERE ll.entry_id = ANY($1::uuid[]) AND a.code = '400000'`,
+      [[first.entryId, rev.entryId]],
+    );
+    const rec = await reconcile(db, {
+      teamId,
+      lineIds: arLines.rows.map((r) => r.id),
+    });
+    expect(rec.status).toBe("full");
   });
 
   test("a second reversal of the same entry is refused", async () => {

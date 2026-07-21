@@ -25,7 +25,7 @@ export async function getTrialBalance(
             SUM(ll.credit)::float8 AS credit,
             SUM(ll.debit - ll.credit)::float8 AS balance
        FROM ledger_lines ll
-       JOIN journal_entries je ON je.id = ll.entry_id AND je.status = 'posted'
+       JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
        JOIN gl_accounts a ON a.id = ll.account_id
       WHERE ll.team_id = $1
         AND je.date >= COALESCE($2::date, '0001-01-01')

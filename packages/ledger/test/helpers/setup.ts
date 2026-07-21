@@ -36,6 +36,13 @@ const M15 = readFileSync(
   ),
   "utf8",
 );
+const M16 = readFileSync(
+  join(
+    import.meta.dir,
+    "../../../db/migrations/0016_accounting_reversed_in_reports.sql",
+  ),
+  "utf8",
+);
 
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
@@ -91,6 +98,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M13);
   await db.query(M14);
   await db.query(M15);
+  await db.query(M16);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

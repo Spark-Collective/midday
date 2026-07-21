@@ -84,7 +84,9 @@ export async function reconcile(
     }
 
     const lines: Line[] = res.rows.map((r) => {
-      if (r.entry_status !== "posted") {
+      // 'reversed' lines stay in the books (the mirror corrects them) and must
+      // be clearable against that mirror — only drafts are off-limits.
+      if (r.entry_status !== "posted" && r.entry_status !== "reversed") {
         throw new LedgerError(
           `line ${r.id} belongs to a ${r.entry_status} entry`,
         );

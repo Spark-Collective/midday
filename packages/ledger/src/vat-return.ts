@@ -88,7 +88,7 @@ export async function computeVatGrids(
     `SELECT ll.debit, ll.credit, a.type AS account_type, a.system_key,
             t.code AS tax_code, t.grids, t.verified
        FROM ledger_lines ll
-       JOIN journal_entries je ON je.id = ll.entry_id AND je.status = 'posted'
+       JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
        JOIN gl_accounts a ON a.id = ll.account_id
        JOIN tax_codes t ON t.id = ll.tax_code_id
       WHERE ll.team_id = $1 AND je.date BETWEEN $2 AND $3`,
@@ -131,7 +131,7 @@ export async function computeVatGrids(
                 AND ((ll.debit > 0 AND ll2.debit > 0) OR (ll.credit > 0 AND ll2.credit > 0))
               ORDER BY GREATEST(ll2.debit, ll2.credit) DESC LIMIT 1) AS cost_code
        FROM ledger_lines ll
-       JOIN journal_entries je ON je.id = ll.entry_id AND je.status = 'posted'
+       JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
        JOIN gl_accounts a ON a.id = ll.account_id
       WHERE ll.team_id = $1 AND je.date BETWEEN $2 AND $3
         AND a.system_key = 'vat_deductible' AND ll.tax_code_id IS NULL`,
@@ -154,7 +154,7 @@ export async function computeVatGrids(
     `SELECT COUNT(*)::int AS n, COALESCE(SUM(ll.credit - ll.debit), 0) AS amount
        FROM ledger_lines ll
        JOIN journal_entries je ON je.id = ll.entry_id
-         AND je.status = 'posted' AND je.source_type = 'invoice'
+         AND je.status IN ('posted','reversed') AND je.source_type = 'invoice'
        JOIN gl_accounts a ON a.id = ll.account_id
       WHERE ll.team_id = $1 AND je.date BETWEEN $2 AND $3
         AND a.type = 'income' AND ll.tax_code_id IS NULL`,

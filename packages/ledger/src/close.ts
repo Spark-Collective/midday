@@ -48,7 +48,7 @@ export async function revaluePeriod(
             COALESCE(SUM(ll.amount_currency), 0) AS fc_balance
        FROM gl_accounts a
        LEFT JOIN ledger_lines ll ON ll.account_id = a.id
-       LEFT JOIN journal_entries je ON je.id = ll.entry_id AND je.status = 'posted'
+       LEFT JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
         AND je.date <= $2
       WHERE a.team_id = $1 AND a.currency IS NOT NULL AND a.currency <> $3
       GROUP BY a.id, a.code, a.currency`,
