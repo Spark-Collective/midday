@@ -287,21 +287,10 @@ export async function seedBelgianLedger(
     result.accounts += res.rowCount ?? 0;
   }
 
-  const vatDeductible = await client.query(
-    `SELECT id FROM gl_accounts WHERE team_id = $1 AND system_key = 'vat_deductible'`,
-    [opts.teamId],
-  );
-  const vatPayable = await client.query(
-    `SELECT id FROM gl_accounts WHERE team_id = $1 AND system_key = 'vat_payable'`,
-    [opts.teamId],
-  );
   for (const t of TAX_CODES) {
-    const accountId = t.code.startsWith("P")
-      ? vatDeductible.rows[0]?.id
-      : vatPayable.rows[0]?.id;
     const res = await client.query(
-      `INSERT INTO tax_codes (team_id, code, name, rate, kind, account_id, grids, verified)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+      `INSERT INTO tax_codes (team_id, code, name, rate, kind, grids, verified)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
        ON CONFLICT ON CONSTRAINT tax_codes_team_code_unique DO NOTHING`,
       [
         opts.teamId,
@@ -309,7 +298,6 @@ export async function seedBelgianLedger(
         t.name,
         String(t.rate),
         t.kind,
-        accountId ?? null,
         JSON.stringify(t.grids),
       ],
     );

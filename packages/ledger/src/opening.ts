@@ -6,6 +6,7 @@
  * balance balances — verified in cents before posting.
  */
 import type { PoolClient } from "pg";
+import { cents } from "./money.js";
 import { LedgerError, type LineInput, postEntry } from "./post.js";
 
 export type TbRow = {
@@ -29,8 +30,6 @@ export type BuildOpeningInput = {
   apControlCode?: string; // default 440000
 };
 
-const cents = (v: number): number => Math.round(v * 100);
-
 export function buildOpeningLines(input: BuildOpeningInput): LineInput[] {
   const arCode = input.arControlCode ?? "400000";
   const apCode = input.apControlCode ?? "440000";
@@ -43,10 +42,7 @@ export function buildOpeningLines(input: BuildOpeningInput): LineInput[] {
     const c = cents(row.credit);
     if (d === 0 && c === 0) continue;
     if (d > 0 && c > 0) {
-      throw new LedgerError(
-        "invalid_tb_row",
-        `TB row ${row.code} carries both debit and credit`,
-      );
+      throw new LedgerError(`TB row ${row.code} carries both debit and credit`);
     }
     if (row.code === arCode) {
       arControlCents = d - c;
@@ -66,14 +62,12 @@ export function buildOpeningLines(input: BuildOpeningInput): LineInput[] {
   const arSum = input.arItems.reduce((s, it) => s + cents(it.amount), 0);
   if (arSum !== arControlCents) {
     throw new LedgerError(
-      "ar_mismatch",
       `open AR items (${(arSum / 100).toFixed(2)}) != TB ${arCode} (${(arControlCents / 100).toFixed(2)})`,
     );
   }
   const apSum = input.apItems.reduce((s, it) => s + cents(it.amount), 0);
   if (apSum !== apControlCents) {
     throw new LedgerError(
-      "ap_mismatch",
       `open AP items (${(apSum / 100).toFixed(2)}) != TB ${apCode} (${(apControlCents / 100).toFixed(2)})`,
     );
   }
@@ -113,7 +107,6 @@ export async function postOpening(
   );
   if ((existing.rowCount ?? 0) > 0) {
     throw new LedgerError(
-      "opening_exists",
       `team already has a posted opening entry (${existing.rows[0].id})`,
     );
   }

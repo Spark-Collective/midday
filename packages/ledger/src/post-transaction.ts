@@ -17,13 +17,12 @@
  * netting is a soft invariant, I7).
  */
 import type { PoolClient } from "pg";
+import { cents } from "./money.js";
 import { LedgerError, type LineInput, postEntry } from "./post.js";
 
 export type PostTransactionInput = {
   transactionId: string;
 };
-
-const cents = (v: number): number => Math.round(v * 100);
 
 export async function postTransaction(
   client: PoolClient,
@@ -36,29 +35,17 @@ export async function postTransaction(
     [input.transactionId],
   );
   if (res.rowCount === 0) {
-    throw new LedgerError(
-      "transaction_not_found",
-      `transaction ${input.transactionId} not found`,
-    );
+    throw new LedgerError(`transaction ${input.transactionId} not found`);
   }
   const txn = res.rows[0];
   if (txn.status !== "posted") {
-    throw new LedgerError(
-      "not_postable",
-      `transaction status '${txn.status}' does not post`,
-    );
+    throw new LedgerError(`transaction status '${txn.status}' does not post`);
   }
   if (!txn.category_slug) {
-    throw new LedgerError(
-      "uncategorized",
-      "transaction has no category — categorise it first",
-    );
+    throw new LedgerError("transaction has no category — categorise it first");
   }
   if (Number(txn.amount) === 0) {
-    throw new LedgerError(
-      "zero_amount",
-      "zero-amount transaction does not post",
-    );
+    throw new LedgerError("zero-amount transaction does not post");
   }
 
   const teamRes = await client.query(
@@ -76,14 +63,12 @@ export async function postTransaction(
   );
   if (journalRes.rowCount === 0) {
     throw new LedgerError(
-      "no_bank_journal",
       `no bank/cash journal bound to bank account ${txn.bank_account_id} — bind one first`,
     );
   }
   const journal = journalRes.rows[0];
   if (!journal.gl_account_id) {
     throw new LedgerError(
-      "no_bank_gl_account",
       `journal '${journal.code}' has no gl_account_id (the 55x/57x account) — set it first`,
     );
   }
@@ -108,7 +93,6 @@ export async function postTransaction(
     );
     if (cat.rowCount === 0 || !cat.rows[0].gl_account_id) {
       throw new LedgerError(
-        "unmapped_category",
         `category '${txn.category_slug}' has no gl_account_id mapping — map it first`,
       );
     }
@@ -128,7 +112,6 @@ export async function postTransaction(
   } else {
     if (txn.base_amount === null || txn.base_amount === undefined) {
       throw new LedgerError(
-        "missing_base_amount",
         `foreign-currency transaction has no base_amount (${currency} vs ${functional})`,
       );
     }

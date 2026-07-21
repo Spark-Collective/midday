@@ -90,12 +90,11 @@ CREATE TABLE "journal_entries" (
   "status" "journal_entry_status" DEFAULT 'draft' NOT NULL,
   "source_type" "journal_entry_source",
   "source_id" uuid,
-  "source_version" integer DEFAULT 1 NOT NULL,
+  "source_version" integer DEFAULT 1 NOT NULL, -- ponytail: always 1 today; versioned re-posting is the M3+ writer
   "reverses_entry_id" uuid REFERENCES "journal_entries"("id"),
-  "is_revaluation" boolean DEFAULT false NOT NULL,
+  "is_revaluation" boolean DEFAULT false NOT NULL, -- ponytail: writer arrives with M5 revaluePeriod
   "narration" text,
   "posted_at" timestamp with time zone,
-  "posted_by" uuid,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -124,7 +123,6 @@ CREATE TABLE "ledger_lines" (
   "tax_code_id" uuid,
   "tax_base" numeric(10, 2),
   "vat_deductible_pct_used" numeric(5, 2),
-  "itax_deductible_pct_override" numeric(5, 2),
   "reconciliation_id" uuid,
   "analytic" jsonb,
   "description" text,
@@ -151,7 +149,6 @@ CREATE TABLE "tax_codes" (
   "name" text NOT NULL,
   "rate" numeric(10, 2) NOT NULL,
   "kind" "tax_kind" NOT NULL,
-  "account_id" uuid,
   "grids" jsonb,
   "verified" boolean DEFAULT false NOT NULL,
   "active" boolean DEFAULT true NOT NULL,
@@ -173,7 +170,6 @@ CREATE TABLE "vu_rates" (
 CREATE TABLE "reconciliations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "team_id" uuid NOT NULL REFERENCES "teams"("id") ON DELETE CASCADE,
-  "status" text DEFAULT 'open' NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

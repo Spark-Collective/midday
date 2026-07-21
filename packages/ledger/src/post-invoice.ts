@@ -10,6 +10,7 @@
  * balances to the cent.
  */
 import type { PoolClient } from "pg";
+import { cents } from "./money.js";
 import { LedgerError, type LineInput, postEntry } from "./post.js";
 
 export type PostInvoiceInput = {
@@ -22,7 +23,6 @@ export type PostInvoiceInput = {
 };
 
 const NON_POSTABLE = new Set(["draft", "canceled", "scheduled"]);
-const cents = (v: number): number => Math.round(v * 100);
 
 export async function postInvoice(
   client: PoolClient,
@@ -35,29 +35,20 @@ export async function postInvoice(
     [input.invoiceId],
   );
   if (res.rowCount === 0) {
-    throw new LedgerError(
-      "invoice_not_found",
-      `invoice ${input.invoiceId} not found`,
-    );
+    throw new LedgerError(`invoice ${input.invoiceId} not found`);
   }
   const inv = res.rows[0];
   if (NON_POSTABLE.has(inv.status)) {
-    throw new LedgerError(
-      "not_postable",
-      `invoice status '${inv.status}' does not post`,
-    );
+    throw new LedgerError(`invoice status '${inv.status}' does not post`);
   }
   if (inv.journal_entry_id) {
-    throw new LedgerError(
-      "already_posted",
-      `invoice already posted (${inv.journal_entry_id})`,
-    );
+    throw new LedgerError(`invoice already posted (${inv.journal_entry_id})`);
   }
   if (!inv.issue_date) {
-    throw new LedgerError("missing_issue_date", "invoice has no issue date");
+    throw new LedgerError("invoice has no issue date");
   }
   if (inv.amount === null || inv.amount === undefined) {
-    throw new LedgerError("missing_amount", "invoice has no amount");
+    throw new LedgerError("invoice has no amount");
   }
 
   const teamRes = await client.query(
@@ -71,10 +62,7 @@ export async function postInvoice(
   const vat = Number(inv.vat ?? 0);
   const base = total - vat;
   if (total <= 0 || base < 0) {
-    throw new LedgerError(
-      "invalid_amounts",
-      `total ${total} / vat ${vat} do not post`,
-    );
+    throw new LedgerError(`total ${total} / vat ${vat} do not post`);
   }
 
   // Functional-currency conversion (identity for same-currency invoices).
@@ -87,7 +75,6 @@ export async function postInvoice(
     );
     if (rateRes.rowCount === 0) {
       throw new LedgerError(
-        "missing_rate",
         `no exchange rate ${currency}->${functional} — sync exchange_rates first`,
       );
     }
@@ -106,10 +93,7 @@ export async function postInvoice(
       [inv.team_id, input.taxCode],
     );
     if (t.rowCount === 0) {
-      throw new LedgerError(
-        "tax_code_not_found",
-        `tax code '${input.taxCode}' not found`,
-      );
+      throw new LedgerError(`tax code '${input.taxCode}' not found`);
     }
     taxCodeId = t.rows[0].id;
   } else if (vat > 0 && base > 0) {
@@ -124,7 +108,6 @@ export async function postInvoice(
     const match = t.rows[0];
     if (!match || Math.abs(Number(match.rate) - impliedRate) > 0.6) {
       throw new LedgerError(
-        "ambiguous_tax_code",
         `cannot match a sales tax code for implied rate ${impliedRate.toFixed(2)}% — pass taxCode`,
       );
     }

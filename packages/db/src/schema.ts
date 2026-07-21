@@ -4426,7 +4426,6 @@ export const journalEntries = pgTable(
     isRevaluation: boolean("is_revaluation").default(false).notNull(),
     narration: text(),
     postedAt: timestamp("posted_at", { withTimezone: true, mode: "string" }),
-    postedBy: uuid("posted_by"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
@@ -4486,10 +4485,6 @@ export const ledgerLines = pgTable(
       precision: 5,
       scale: 2,
     }),
-    itaxDeductiblePctOverride: numericCasted("itax_deductible_pct_override", {
-      precision: 5,
-      scale: 2,
-    }),
     reconciliationId: uuid("reconciliation_id"),
     analytic: jsonb(),
     description: text(),
@@ -4530,9 +4525,6 @@ export const taxCodes = pgTable(
     name: text().notNull(),
     rate: numericCasted({ precision: 10, scale: 2 }).notNull(),
     kind: taxKindEnum().notNull(),
-    // VAT control account (411x deductible / 451x payable). No FK to avoid a
-    // circular dependency with glAccounts; resolved by systemKey at posting.
-    accountId: uuid("account_id"),
     grids: jsonb(),
     verified: boolean().default(false).notNull(),
     active: boolean().default(true).notNull(),
@@ -4589,7 +4581,6 @@ export const reconciliations = pgTable(
     teamId: uuid("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
-    status: text().default("open").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
       .defaultNow()
       .notNull(),
@@ -4634,20 +4625,6 @@ export const reconciliationAllocations = pgTable(
   ],
 );
 
-export const journalEntriesRelations = relations(
-  journalEntries,
-  ({ one, many }) => ({
-    journal: one(journals, {
-      fields: [journalEntries.journalId],
-      references: [journals.id],
-    }),
-    period: one(fiscalPeriods, {
-      fields: [journalEntries.periodId],
-      references: [fiscalPeriods.id],
-    }),
-    lines: many(ledgerLines),
-  }),
-);
 
 export const ledgerLinesRelations = relations(ledgerLines, ({ one }) => ({
   entry: one(journalEntries, {

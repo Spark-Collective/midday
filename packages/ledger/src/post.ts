@@ -10,14 +10,9 @@
  * All monetary math happens in integer cents; values reach Postgres as strings.
  */
 import type { PoolClient } from "pg";
+import { cents, centsToStr } from "./money.js";
 
-export class LedgerError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-  }
-}
+export class LedgerError extends Error {}
 
 export type LineInput = {
   /** Resolve the account one of three ways. */
@@ -61,7 +56,6 @@ export type PostEntryInput = {
   sourceVersion?: number;
   /** Set on a reversal entry; points at the entry being reversed. */
   reversesEntryId?: string;
-  postedBy?: string;
   /** Default true. Callers that already run a transaction (reconcile, reverse)
    *  pass false so the whole operation stays atomic. */
   manageTransaction?: boolean;
@@ -73,9 +67,6 @@ export type PostEntryResult = {
   entryNumber: string;
 };
 
-const toCents = (v: number): number => Math.round(v * 100);
-const centsToStr = (c: number): string => (c / 100).toFixed(2);
-
 /**
  * Post a balanced entry in one transaction. `client` must be a dedicated
  * connection (pg PoolClient) — the function runs BEGIN/COMMIT itself.
@@ -85,13 +76,10 @@ export async function postEntry(
   input: PostEntryInput,
 ): Promise<PostEntryResult> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) {
-    throw new LedgerError(
-      "invalid_date",
-      `date must be YYYY-MM-DD, got '${input.date}'`,
-    );
+    throw new LedgerError(`date must be YYYY-MM-DD, got '${input.date}'`);
   }
   if (input.lines.length < 2) {
-    throw new LedgerError("too_few_lines", "an entry needs at least 2 lines");
+    throw new LedgerError("an entry needs at least 2 lines");
   }
 
   const manageTx = input.manageTransaction !== false;
@@ -103,7 +91,7 @@ export async function postEntry(
       [input.teamId],
     );
     if (teamRes.rowCount === 0) {
-      throw new LedgerError("team_not_found", `team ${input.teamId} not found`);
+      throw new LedgerError(`team ${input.teamId} not found`);
     }
     const functional: string = teamRes.rows[0].base_currency ?? "EUR";
 
@@ -116,7 +104,6 @@ export async function postEntry(
     );
     if (journalRes.rowCount === 0) {
       throw new LedgerError(
-        "journal_not_found",
         `journal '${input.journalCode}' not found for team`,
       );
     }
@@ -130,7 +117,6 @@ export async function postEntry(
     );
     if (periodRes.rowCount === 0) {
       throw new LedgerError(
-        "period_not_found",
         `no fiscal period ${year}-${String(month).padStart(2, "0")} — seed periods first`,
       );
     }
@@ -163,15 +149,13 @@ export async function postEntry(
         (l.systemKey ? byKey.get(l.systemKey) : undefined);
       if (!accountId) {
         throw new LedgerError(
-          "account_not_found",
           `line ${i + 1}: cannot resolve account (${l.accountCode ?? l.systemKey ?? l.accountId})`,
         );
       }
-      const d = toCents(l.debit ?? 0);
-      const c = toCents(l.credit ?? 0);
+      const d = cents(l.debit ?? 0);
+      const c = cents(l.credit ?? 0);
       if (d < 0 || c < 0 || (d > 0 && c > 0) || d + c === 0) {
         throw new LedgerError(
-          "invalid_line",
           `line ${i + 1}: exactly one positive side required (debit=${l.debit}, credit=${l.credit})`,
         );
       }
@@ -181,31 +165,29 @@ export async function postEntry(
       const currency = l.currency ?? functional;
       let amountCurrencyCents: number;
       if (currency === functional) {
-        amountCurrencyCents = toCents(
+        amountCurrencyCents = cents(
           l.amountCurrency ?? (d > 0 ? d / 100 : -c / 100),
         );
       } else {
         if (l.amountCurrency === undefined) {
           throw new LedgerError(
-            "missing_amount_currency",
             `line ${i + 1}: amountCurrency is required for ${currency} (functional is ${functional})`,
           );
         }
-        amountCurrencyCents = toCents(l.amountCurrency);
+        amountCurrencyCents = cents(l.amountCurrency);
       }
       return { ...l, accountId, d, c, currency, amountCurrencyCents };
     });
     if (debitCents !== creditCents) {
       throw new LedgerError(
-        "unbalanced",
         `entry does not balance: debit ${centsToStr(debitCents)} <> credit ${centsToStr(creditCents)}`,
       );
     }
 
     const entryRes = await client.query(
       `INSERT INTO journal_entries
-         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, posted_by, reverses_entry_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, reverses_entry_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         input.teamId,
@@ -216,7 +198,6 @@ export async function postEntry(
         input.sourceId ?? null,
         input.sourceVersion ?? 1,
         input.narration ?? null,
-        input.postedBy ?? null,
         input.reversesEntryId ?? null,
       ],
     );
@@ -241,7 +222,7 @@ export async function postEntry(
           l.partyType ?? null,
           l.partyId ?? null,
           l.taxCodeId ?? null,
-          l.taxBase !== undefined ? centsToStr(toCents(l.taxBase)) : null,
+          l.taxBase !== undefined ? centsToStr(cents(l.taxBase)) : null,
           l.vatDeductiblePctUsed !== undefined
             ? String(l.vatDeductiblePctUsed)
             : null,

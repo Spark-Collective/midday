@@ -29,15 +29,11 @@ export async function reverseEntry(
       [input.teamId, input.entryId],
     );
     if (entryRes.rowCount === 0) {
-      throw new LedgerError(
-        "entry_not_found",
-        `entry ${input.entryId} not found`,
-      );
+      throw new LedgerError(`entry ${input.entryId} not found`);
     }
     const entry = entryRes.rows[0];
     if (entry.status !== "posted") {
       throw new LedgerError(
-        "not_posted",
         `only posted entries reverse (status: ${entry.status})`,
       );
     }
@@ -48,7 +44,6 @@ export async function reverseEntry(
     );
     if ((existing.rowCount ?? 0) > 0) {
       throw new LedgerError(
-        "already_reversed",
         `entry already has a posted reversal (${existing.rows[0].id})`,
       );
     }

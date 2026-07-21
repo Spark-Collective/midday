@@ -15,6 +15,7 @@
  * metadata only, posted lines are never touched.
  */
 import type { PoolClient } from "pg";
+import { cents } from "./money.js";
 import { LedgerError, postEntry } from "./post.js";
 
 export type ReconcileInput = {
@@ -54,17 +55,12 @@ type Line = {
   residual: number; // signed cents: + open debit, − open credit
 };
 
-const cents = (v: number | string): number => Math.round(Number(v) * 100);
-
 export async function reconcile(
   client: PoolClient,
   input: ReconcileInput,
 ): Promise<ReconcileResult> {
   if (input.lineIds.length < 2) {
-    throw new LedgerError(
-      "too_few_lines",
-      "reconciliation needs at least 2 lines",
-    );
+    throw new LedgerError("reconciliation needs at least 2 lines");
   }
   await client.query("BEGIN");
   try {
@@ -84,24 +80,17 @@ export async function reconcile(
       [input.teamId, input.lineIds],
     );
     if (res.rowCount !== input.lineIds.length) {
-      throw new LedgerError(
-        "lines_not_found",
-        "some lines not found for this team",
-      );
+      throw new LedgerError("some lines not found for this team");
     }
 
     const lines: Line[] = res.rows.map((r) => {
       if (r.entry_status !== "posted") {
         throw new LedgerError(
-          "not_posted",
           `line ${r.id} belongs to a ${r.entry_status} entry`,
         );
       }
       if (r.reconciliation_id) {
-        throw new LedgerError(
-          "already_reconciled",
-          `line ${r.id} is already fully reconciled`,
-        );
+        throw new LedgerError(`line ${r.id} is already fully reconciled`);
       }
       const debit = cents(r.debit);
       const credit = cents(r.credit);
@@ -126,13 +115,10 @@ export async function reconcile(
 
     const accountIds = new Set(lines.map((l) => l.account_id));
     if (accountIds.size !== 1) {
-      throw new LedgerError(
-        "mixed_accounts",
-        "all lines must be on the same account",
-      );
+      throw new LedgerError("all lines must be on the same account");
     }
     const account = lines[0];
-    if (!account) throw new LedgerError("lines_not_found", "no lines");
+    if (!account) throw new LedgerError("no lines");
 
     const teamRes = await client.query(
       `SELECT base_currency FROM teams WHERE id = $1`,
@@ -279,7 +265,7 @@ export async function reconcile(
     let reconciliationId: string | undefined;
     if (residualCents === 0) {
       const rec = await client.query(
-        `INSERT INTO reconciliations (team_id, status) VALUES ($1, 'full') RETURNING id`,
+        `INSERT INTO reconciliations (team_id) VALUES ($1) RETURNING id`,
         [input.teamId],
       );
       reconciliationId = rec.rows[0].id;
