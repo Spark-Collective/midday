@@ -141,6 +141,13 @@ export const invoiceDeliveryTypeEnum = pgEnum("invoice_delivery_type", [
 ]);
 
 export const invoiceSizeEnum = pgEnum("invoice_size", ["a4", "letter"]);
+// S7 (accounting plan): a credit note is a first-class document that mirrors
+// its posting and must reference the original invoice (Belgian formality).
+export const invoiceTypeEnum = pgEnum("invoice_type", [
+  "invoice",
+  "credit_note",
+]);
+
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "draft",
   "overdue",
@@ -923,6 +930,10 @@ export const invoices = pgTable(
     url: text(),
     filePath: text("file_path").array(),
     status: invoiceStatusEnum().default("draft").notNull(),
+    // Accounting (M1): document type + CN back-reference + posted-entry pointer.
+    invoiceType: invoiceTypeEnum("invoice_type").default("invoice").notNull(),
+    creditedInvoiceId: uuid("credited_invoice_id"),
+    journalEntryId: uuid("journal_entry_id"),
     viewedAt: timestamp("viewed_at", { withTimezone: true, mode: "string" }),
     fromDetails: jsonb("from_details"),
     issueDate: timestamp("issue_date", { withTimezone: true, mode: "string" }),
@@ -2845,6 +2856,8 @@ export const transactionCategories = pgTable(
     excluded: boolean("excluded").default(false),
     description: text(),
     parentId: uuid("parent_id"),
+    // Accounting (M1): the PCMN account a categorised transaction posts to.
+    glAccountId: uuid("gl_account_id"),
   },
   (table) => [
     index("transaction_categories_team_id_idx").using(
@@ -4342,6 +4355,9 @@ export const journals = pgTable(
     // Bank journals bind to a Midday bank account (no FK on purpose: the
     // accounting core must not depend on banking rows existing).
     bankAccountId: uuid("bank_account_id"),
+    // The journal's own GL side: for bank/cash journals, the 55x/57x account
+    // that every posted transaction hits (M1 posting rule).
+    glAccountId: uuid("gl_account_id"),
     active: boolean().default(true).notNull(),
   },
   (table) => [

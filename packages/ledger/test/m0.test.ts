@@ -98,7 +98,7 @@ describe("seed", () => {
       `SELECT COUNT(*)::int AS n FROM gl_accounts WHERE team_id = $1 AND system_key IS NOT NULL`,
       [teamId],
     );
-    expect(a.rows[0].n).toBe(16);
+    expect(a.rows[0].n).toBe(17);
     const t = await db.query(
       `SELECT COUNT(*)::int AS n, BOOL_AND(NOT verified) AS all_unverified FROM tax_codes WHERE team_id = $1`,
       [teamId],

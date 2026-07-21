@@ -67,6 +67,7 @@ const SYSTEM_ACCOUNTS: Array<
     "depreciation_expense",
   ],
   ["140000", "Overgedragen winst", "equity", "retained_earnings"],
+  ["700000", "Verkopen en diensten", "income", "sales_revenue"],
 ];
 
 // Belgian VAT codes. Grid boxes are DRAFT (verified=false) until checked
@@ -179,7 +180,7 @@ function typeFromRootType(rootType: string, code: string): string {
 }
 
 /** Minimal CSV parser (quoted fields, no embedded newlines). */
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   return text
     .split(/\r?\n/)
     .filter((l) => l.trim().length > 0)
