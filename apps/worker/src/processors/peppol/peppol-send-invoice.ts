@@ -32,6 +32,7 @@ export class PeppolSendInvoiceProcessor extends BaseProcessor<PeppolSendPayload>
 
     const invoice = invoices?.[0];
     if (!invoice) return { sent: false, reason: "invoice not found" };
+    if (!invoice.customer_id) return { sent: false, reason: "invoice has no customer" };
 
     if ((invoice.internal_note ?? "").includes("Peppol sent")) {
       return { sent: false, reason: "already sent via Peppol" };
