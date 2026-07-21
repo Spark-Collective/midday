@@ -545,6 +545,70 @@ export function InboxDetails() {
               </div>
             )}
 
+            {/* spark: surface the parsed OCR values as labeled fields, not just
+                the PDF. Fields come from the inbox row (populated by
+                process-attachment's extraction). */}
+            {!isProcessing && (data?.amount != null || data?.date || data?.type) && (
+              <div className="border p-4 flex-shrink-0">
+                <div className="text-xs font-medium text-muted-foreground mb-3">
+                  Extracted details
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs select-text">
+                  {data?.displayName && (
+                    <>
+                      <span className="text-muted-foreground">Vendor</span>
+                      <span className="text-right">{data.displayName}</span>
+                    </>
+                  )}
+                  {data?.type && (
+                    <>
+                      <span className="text-muted-foreground">Type</span>
+                      <span className="text-right capitalize">{data.type}</span>
+                    </>
+                  )}
+                  {data?.amount != null && data?.currency && (
+                    <>
+                      <span className="text-muted-foreground">Amount</span>
+                      <span className="text-right">
+                        <FormatAmount amount={data.amount} currency={data.currency} />
+                      </span>
+                    </>
+                  )}
+                  {data?.taxAmount != null && data.taxAmount > 0 && data?.currency && (
+                    <>
+                      <span className="text-muted-foreground">
+                        {data.taxType ? getTaxTypeLabel(data.taxType) : "VAT"}
+                        {data.taxRate ? ` (${data.taxRate}%)` : ""}
+                      </span>
+                      <span className="text-right">
+                        <FormatAmount amount={data.taxAmount} currency={data.currency} />
+                      </span>
+                    </>
+                  )}
+                  {data?.date && (
+                    <>
+                      <span className="text-muted-foreground">Date</span>
+                      <span className="text-right">
+                        {formatDate(data.date, user?.dateFormat)}
+                      </span>
+                    </>
+                  )}
+                  {data?.website && (
+                    <>
+                      <span className="text-muted-foreground">Website</span>
+                      <span className="text-right">{data.website}</span>
+                    </>
+                  )}
+                  {data?.senderEmail && (
+                    <>
+                      <span className="text-muted-foreground">From</span>
+                      <span className="text-right truncate">{data.senderEmail}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             {data?.relatedItems &&
               data.relatedItems.length > 0 &&
               data.relatedItems.map(
