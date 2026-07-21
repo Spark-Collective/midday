@@ -70,9 +70,10 @@ const SYSTEM_ACCOUNTS: Array<
   ["700000", "Verkopen en diensten", "income", "sales_revenue"],
 ];
 
-// Belgian VAT codes. Grid boxes are DRAFT (verified=false) until checked
-// against the accounting-kb (M3). Direction-aware per S7: credit notes report
-// in their own boxes, never netted into the invoice grids.
+// Belgian VAT codes, direction-aware per S7 (credit notes report in their own
+// boxes, never netted). Grid mappings VERIFIED against the accounting-kb
+// (concepts/vat/vat-return-grilles.md, 2026-07-20). That page is verify_live:
+// the return generator still warns to confirm against the current form.
 const TAX_CODES: Array<{
   code: string;
   name: string;
@@ -290,7 +291,7 @@ export async function seedBelgianLedger(
   for (const t of TAX_CODES) {
     const res = await client.query(
       `INSERT INTO tax_codes (team_id, code, name, rate, kind, grids, verified)
-       VALUES ($1, $2, $3, $4, $5, $6, false)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
        ON CONFLICT ON CONSTRAINT tax_codes_team_code_unique DO NOTHING`,
       [
         opts.teamId,

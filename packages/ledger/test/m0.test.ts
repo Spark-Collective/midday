@@ -53,11 +53,11 @@ describe("seed", () => {
     );
     expect(a.rows[0].n).toBe(17);
     const t = await db.query(
-      `SELECT COUNT(*)::int AS n, BOOL_AND(NOT verified) AS all_unverified FROM tax_codes WHERE team_id = $1`,
+      `SELECT COUNT(*)::int AS n, BOOL_AND(verified) AS all_verified FROM tax_codes WHERE team_id = $1`,
       [teamId],
     );
     expect(t.rows[0].n).toBe(8);
-    expect(t.rows[0].all_unverified).toBe(true); // grids stay draft until KB check (M3)
+    expect(t.rows[0].all_verified).toBe(true); // grid mappings KB-verified (M3)
   });
 
   test("is idempotent", async () => {

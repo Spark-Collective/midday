@@ -29,3 +29,10 @@ export {
   type SeedResult,
   seedBelgianLedger,
 } from "./seed.js";
+export {
+  buildVatConsignmentXml,
+  generateVatReturn,
+  type VatDeclarant,
+  type VatPeriod,
+  type VatReturnResult,
+} from "./vat-return.js";
