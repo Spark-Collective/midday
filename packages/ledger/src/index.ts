@@ -18,6 +18,7 @@ export {
   postOpening,
   type TbRow,
 } from "./opening.js";
+export type { LedgerDb } from "./post.js";
 export {
   LedgerError,
   type LineInput,
@@ -36,6 +37,14 @@ export {
   reconcile,
   unallocate,
 } from "./reconcile.js";
+export {
+  type GeneralLedgerRow,
+  getGeneralLedger,
+  getOpenItems,
+  getTrialBalance,
+  type OpenItemRow,
+  type TrialBalanceRow,
+} from "./reports.js";
 export { type ReverseEntryInput, reverseEntry } from "./reverse.js";
 export {
   type SeedOptions,
@@ -44,6 +53,7 @@ export {
 } from "./seed.js";
 export {
   buildVatConsignmentXml,
+  computeVatGrids,
   generateVatReturn,
   type VatDeclarant,
   type VatPeriod,

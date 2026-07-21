@@ -29,9 +29,18 @@ const M14 = readFileSync(
   ),
   "utf8",
 );
+const M15 = readFileSync(
+  join(
+    import.meta.dir,
+    "../../../db/migrations/0015_accounting_report_views.sql",
+  ),
+  "utf8",
+);
 
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
+  DROP VIEW IF EXISTS v_general_ledger;
+  DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
   DROP TABLE IF EXISTS amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
@@ -81,6 +90,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M12);
   await db.query(M13);
   await db.query(M14);
+  await db.query(M15);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

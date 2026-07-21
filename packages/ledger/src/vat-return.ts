@@ -14,8 +14,7 @@
  * tax_codes.grids; uncoded purchase VAT (the bank-transaction path) falls back
  * to the Belgian account-class heuristic: 60x -> 81, 2xx -> 83, else 82.
  */
-import type { PoolClient } from "pg";
-import { LedgerError } from "./post.js";
+import { type LedgerDb, LedgerError } from "./post.js";
 
 export type VatPeriod = { year: number; quarter?: number; month?: number };
 
@@ -68,17 +67,11 @@ function purchaseBaseGrid(accountCode: string): string {
   return "82";
 }
 
-export async function generateVatReturn(
-  client: PoolClient,
-  input: {
-    teamId: string;
-    period: VatPeriod;
-    declarant: VatDeclarant;
-    /** ClientListingNihil flag for the XML, default "NO". */
-    clientListingNihil?: "YES" | "NO";
-    askRestitution?: "YES" | "NO";
-  },
-): Promise<VatReturnResult> {
+/** Grids + warnings only (no XML) — what the dashboard shows. */
+export async function computeVatGrids(
+  client: LedgerDb,
+  input: { teamId: string; period: VatPeriod },
+): Promise<{ grids: Record<string, string>; warnings: string[] }> {
   const { from, to } = periodRange(input.period);
   const warnings: string[] = [
     "Verify boxes and deadline against the current FOD Financien form before filing (accounting-kb: vat-return-grilles is verify_live; 2025 moved quarterly filing to the 25th).",
@@ -192,10 +185,25 @@ export async function generateVatReturn(
   )) {
     if (v !== 0) out[box] = (v / 100).toFixed(2);
   }
+  return { grids: out, warnings };
+}
+
+export async function generateVatReturn(
+  client: LedgerDb,
+  input: {
+    teamId: string;
+    period: VatPeriod;
+    declarant: VatDeclarant;
+    /** ClientListingNihil flag for the XML, default "NO". */
+    clientListingNihil?: "YES" | "NO";
+    askRestitution?: "YES" | "NO";
+  },
+): Promise<VatReturnResult> {
+  const { grids, warnings } = await computeVatGrids(client, input);
   return {
     period: input.period,
-    grids: out,
-    xml: buildVatConsignmentXml(input, out),
+    grids,
+    xml: buildVatConsignmentXml(input, grids),
     warnings,
   };
 }

@@ -43,6 +43,7 @@
         "@midday/invoice": "workspace:*",
         "@midday/job-client": "workspace:*",
         "@midday/jobs": "workspace:*",
+        "@midday/ledger": "workspace:*",
         "@midday/location": "workspace:*",
         "@midday/logger": "workspace:*",
         "@midday/mcp-apps": "workspace:*",

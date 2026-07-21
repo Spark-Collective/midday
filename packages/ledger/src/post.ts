@@ -12,6 +12,19 @@
 import type { PoolClient } from "pg";
 import { cents, centsToStr } from "./money.js";
 
+/**
+ * Minimal query surface for READ-ONLY ledger functions: both a pg Pool and a
+ * PoolClient satisfy it. Transactional operations (posting, reconciliation)
+ * still require a dedicated PoolClient.
+ */
+export type LedgerDb = {
+  query(
+    queryText: string,
+    values?: unknown[],
+    // biome-ignore lint/suspicious/noExplicitAny: driver row shape
+  ): Promise<{ rows: any[]; rowCount: number | null }>;
+};
+
 export class LedgerError extends Error {}
 
 export type LineInput = {
