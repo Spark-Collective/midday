@@ -69,7 +69,8 @@
     "superjson": "^2.2.6",
     "toolpick": "0.4.0",
     "uuid": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@midday/ledger": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",
