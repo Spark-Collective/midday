@@ -112,6 +112,7 @@ bootstrap. Every one of them is a silent failure if missing:
 | **`handle_new_user()` + `on_auth_user_created` trigger** on `auth.users` | login "works" then bounces to /login forever (`user.me` finds no `public.users` row) | create the standard Supabase trigger (insert id/email/full_name/avatar_url, `on conflict do nothing`) + backfill existing auth users |
 | **`private.get_teams_for_authenticated_user()`** | RLS + storage policies can't resolve team membership | `SECURITY DEFINER` over `users_on_team` returning `SETOF uuid` |
 | **`generate_inbox(int)` + `nanoid(int)`** | team creation fails: unique-constraint violation, because the column default stored the LITERAL string `'generate_inbox(10)'` | create the functions, then `ALTER COLUMN ... SET DEFAULT public.generate_inbox(10)` (and `nanoid(24)` on `user_invites.code`) |
+| **`handle_new_vault_object()` trigger** on `storage.objects` | the **Vault stays empty** — uploaded files (inbox attachments, invoice PDFs) never get a `public.documents` row, so `process-document`'s update-by-path is a no-op | trigger on vault-bucket inserts that creates a `documents` row (name, team_id = first path folder, `path_tokens` = full path array) + backfill existing objects. NB `documents.fts` is GENERATED from `(title \|\| ' ') \|\| body` and NOT NULL → seed `title`=filename + `body`=''. |
 | **Storage RLS policies on `storage.objects`** | manual uploads spin forever (browser upload denied; only service-key uploads work) | per private bucket (vault/transactions/inbox/apps): authenticated user may CRUD where `(storage.foldername(name))[1]::uuid IN (SELECT private.get_teams_for_authenticated_user())`; public read on avatars/teams/users |
 
 ### 3.4 The casing gotcha (catches everyone)
@@ -306,6 +307,9 @@ Enqueue from inside the worker container (`docker exec … bun -e`), on `redis
 | Team creation fails (unique violation) | `generate_inbox`/`nanoid` literal defaults | §3.3 |
 | `column "base_amount" does not exist` | camelCase export vs snake_case runtime | §3.4 |
 | Manual upload spins forever ("File not found") | no `storage.objects` RLS policies | §3.3 |
+| Vault empty; uploaded docs never appear | no storage→documents trigger | §3.3 |
+| Nothing auto-matches even at 100% | `MATCH_AUTO_ENABLED` unset (off by default); also a cold-start gate (needs ≥3 confirmed matches first) | env |
+| `documents` queue deadlocks under load | `process-document` does `triggerJobAndWait("classify-document")` on the SAME queue (concurrency 10) — ≥10 parents starve their children. Don't bulk-enqueue; drip in small batches | — |
 | Inbox docs stuck "Analyzing" | missing `MISTRAL_API_KEY`/`GOOGLE_…` or enrichment never enqueued | §4.3 |
 | Invoice share link fails | placeholder token, not signed with `INVOICE_JWT_SECRET` | §10 |
 | Ponto `invalidClientId`/`invalid_client` | creds rotated at activation | §7 |
