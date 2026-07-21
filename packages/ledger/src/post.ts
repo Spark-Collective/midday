@@ -59,7 +59,12 @@ export type PostEntryInput = {
     | "manual";
   sourceId?: string;
   sourceVersion?: number;
+  /** Set on a reversal entry; points at the entry being reversed. */
+  reversesEntryId?: string;
   postedBy?: string;
+  /** Default true. Callers that already run a transaction (reconcile, reverse)
+   *  pass false so the whole operation stays atomic. */
+  manageTransaction?: boolean;
   lines: LineInput[];
 };
 
@@ -89,7 +94,8 @@ export async function postEntry(
     throw new LedgerError("too_few_lines", "an entry needs at least 2 lines");
   }
 
-  await client.query("BEGIN");
+  const manageTx = input.manageTransaction !== false;
+  if (manageTx) await client.query("BEGIN");
   try {
     // Functional currency of the team.
     const teamRes = await client.query(
@@ -198,8 +204,8 @@ export async function postEntry(
 
     const entryRes = await client.query(
       `INSERT INTO journal_entries
-         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, posted_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (team_id, journal_id, date, period_id, source_type, source_id, source_version, narration, posted_by, reverses_entry_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
         input.teamId,
@@ -211,6 +217,7 @@ export async function postEntry(
         input.sourceVersion ?? 1,
         input.narration ?? null,
         input.postedBy ?? null,
+        input.reversesEntryId ?? null,
       ],
     );
     const entryId: string = entryRes.rows[0].id;
@@ -261,10 +268,10 @@ export async function postEntry(
       [entryId, entryNumber],
     );
 
-    await client.query("COMMIT");
+    if (manageTx) await client.query("COMMIT");
     return { entryId, entryNumber };
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (manageTx) await client.query("ROLLBACK");
     throw err;
   }
 }

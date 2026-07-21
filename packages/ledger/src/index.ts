@@ -18,6 +18,13 @@ export {
   postTransaction,
 } from "./post-transaction.js";
 export {
+  type ReconcileInput,
+  type ReconcileResult,
+  reconcile,
+  unallocate,
+} from "./reconcile.js";
+export { type ReverseEntryInput, reverseEntry } from "./reverse.js";
+export {
   type SeedOptions,
   type SeedResult,
   seedBelgianLedger,

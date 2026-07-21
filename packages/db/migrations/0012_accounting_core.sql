@@ -329,14 +329,24 @@ DECLARE
   v_entry_team uuid;
   v_acct gl_accounts%ROWTYPE;
 BEGIN
-  IF TG_OP IN ('UPDATE', 'DELETE') THEN
+  IF TG_OP = 'UPDATE' THEN
     SELECT status INTO v_status FROM journal_entries WHERE id = OLD.entry_id;
     IF v_status <> 'draft' THEN
+      -- Posted lines are frozen EXCEPT for reconciliation stamping: the
+      -- reconciliation_id is open-item metadata, not ledger content.
+      IF to_jsonb(NEW) - 'reconciliation_id' = to_jsonb(OLD) - 'reconciliation_id' THEN
+        RETURN NEW;
+      END IF;
       RAISE EXCEPTION 'lines of a % entry are immutable', v_status
         USING ERRCODE = 'check_violation';
     END IF;
   END IF;
   IF TG_OP = 'DELETE' THEN
+    SELECT status INTO v_status FROM journal_entries WHERE id = OLD.entry_id;
+    IF v_status IS NOT NULL AND v_status <> 'draft' THEN
+      RAISE EXCEPTION 'lines of a % entry are immutable', v_status
+        USING ERRCODE = 'check_violation';
+    END IF;
     RETURN OLD;
   END IF;
 
