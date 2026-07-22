@@ -6,6 +6,8 @@ import {
   generateVatReturn,
   getGeneralLedger,
   getOpenItems,
+  getOverview,
+  getStatement,
   getTrialBalance,
 } from "@midday/ledger";
 import type { Pool } from "pg";
@@ -116,6 +118,39 @@ export const ledgerRouter = createTRPCRouter({
         warnings: result.warnings,
         filename: `intervat-${input.year}-Q${input.quarter}.xml`,
       };
+    }),
+
+  // Grouped financial statements (M7): resultatenrekening + balans, with an
+  // optional comparison year. The current year is cut at today (YTD).
+  statement: protectedProcedure
+    .input(
+      z.object({
+        kind: z.enum(["income", "balance"]),
+        year: z.number().int().min(2000).max(2100),
+        compareYear: z.number().int().min(2000).max(2100).optional(),
+      }),
+    )
+    .query(async ({ ctx: { teamId }, input }) => {
+      const today = new Date().toISOString().slice(0, 10);
+      const bound = (year: number) => {
+        const to = today.startsWith(String(year)) ? today : `${year}-12-31`;
+        return input.kind === "income"
+          ? { from: `${year}-01-01`, to, label: String(year) }
+          : { to, label: String(year) };
+      };
+      const periods = [bound(input.year)];
+      if (input.compareYear) periods.push(bound(input.compareYear));
+      return getStatement(ledgerDb(), {
+        teamId: teamId!,
+        kind: input.kind,
+        periods,
+      });
+    }),
+
+  overview: protectedProcedure
+    .input(z.object({ year: z.number().int().min(2000).max(2100) }))
+    .query(async ({ ctx: { teamId }, input }) => {
+      return getOverview(ledgerDb(), { teamId: teamId!, year: input.year });
     }),
 
   // The close cockpit: month statuses + what still blocks a close.

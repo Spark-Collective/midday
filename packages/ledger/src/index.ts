@@ -52,6 +52,18 @@ export {
   seedBelgianLedger,
 } from "./seed.js";
 export {
+  BALANCE_SECTIONS,
+  COST_GROUPS,
+  getOverview,
+  getStatement,
+  INCOME_SECTIONS,
+  type OverviewResult,
+  type StatementPeriod,
+  type StatementResult,
+  type StatementRow,
+  type StatementSection,
+} from "./statement.js";
+export {
   buildVatConsignmentXml,
   computeVatGrids,
   generateVatReturn,
