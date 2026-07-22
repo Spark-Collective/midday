@@ -309,7 +309,7 @@ Enqueue from inside the worker container (`docker exec … bun -e`), on `redis
 | Manual upload spins forever ("File not found") | no `storage.objects` RLS policies | §3.3 |
 | Vault empty; uploaded docs never appear | no storage→documents trigger | §3.3 |
 | Nothing auto-matches even at 100% | `MATCH_AUTO_ENABLED` unset (off by default); also a cold-start gate (needs ≥3 confirmed matches first) | env |
-| `documents` queue deadlocks under load | `process-document` does `triggerJobAndWait("classify-document")` on the SAME queue (concurrency 10) — ≥10 parents starve their children. Don't bulk-enqueue; drip in small batches | — |
+| `documents` queue deadlocks under load | `process-document` blocked on its `classify-*` child on the SAME queue — ≥10 parents starved their children. **Fixed in fork:** classify-document/image run on a dedicated `classification` queue (`feat(spark)`). | — |
 | Inbox docs stuck "Analyzing" | missing `MISTRAL_API_KEY`/`GOOGLE_…` or enrichment never enqueued | §4.3 |
 | Invoice share link fails | placeholder token, not signed with `INVOICE_JWT_SECRET` | §10 |
 | Ponto `invalidClientId`/`invalid_client` | creds rotated at activation | §7 |
