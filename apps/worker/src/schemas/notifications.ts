@@ -27,6 +27,22 @@ export const insightReadyNotificationSchema = z.object({
   audioUrl: z.string().optional(),
 });
 
+export const jobFailedNotificationSchema = z.object({
+  ...baseFields,
+  type: z.literal("job_failed"),
+  failedCount: z.number(),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  breakdown: z.array(
+    z.object({
+      queue: z.string(),
+      jobName: z.string(),
+      count: z.number(),
+      lastError: z.string().optional(),
+    }),
+  ),
+});
+
 // ============================================
 // Inbox Notifications
 // ============================================
@@ -174,6 +190,8 @@ export const transactionsExportedNotificationSchema = z.object({
 export const notificationPayloadSchema = z.discriminatedUnion("type", [
   // Insights
   insightReadyNotificationSchema,
+  // System health (spark)
+  jobFailedNotificationSchema,
   // Inbox
   inboxNewNotificationSchema,
   // Documents

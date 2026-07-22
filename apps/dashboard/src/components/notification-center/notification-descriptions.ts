@@ -695,6 +695,23 @@ const handleInboxCrossCurrencyMatched: NotificationDescriptionHandler = (
   return t("notifications.inbox_cross_currency_matched.title");
 };
 
+// spark: background-job failure sweep (job-health-check). Plain strings —
+// a system alert for the operator, not a localized product surface.
+const handleJobFailed: NotificationDescriptionHandler = (metadata) => {
+  const count = metadata?.failedCount ?? 0;
+  const breakdown = Array.isArray(metadata?.breakdown)
+    ? metadata.breakdown
+    : [];
+  const top = breakdown
+    .slice(0, 3)
+    .map(
+      (b: { queue: string; jobName: string; count: number }) =>
+        `${b.jobName} (${b.queue}) ×${b.count}`,
+    )
+    .join(", ");
+  return `${count} background job${count === 1 ? "" : "s"} failed in the last hour${top ? `: ${top}` : ""}. Check the worker logs.`;
+};
+
 const notificationHandlers: Record<string, NotificationDescriptionHandler> = {
   transactions_created: handleTransactionsCreated,
   inbox_new: handleInboxNew,
@@ -713,6 +730,7 @@ const notificationHandlers: Record<string, NotificationDescriptionHandler> = {
   recurring_series_completed: handleRecurringSeriesCompleted,
   recurring_series_paused: handleRecurringSeriesPaused,
   recurring_invoice_upcoming: handleRecurringInvoiceUpcoming,
+  job_failed: handleJobFailed,
 };
 
 export function getNotificationDescription(

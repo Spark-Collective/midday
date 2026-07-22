@@ -279,6 +279,9 @@ export const activityTypeEnum = pgEnum("activity_type", [
   "transactions_exported",
   "customer_created",
   "insight_ready",
+
+  // System health (spark)
+  "job_failed",
 ]);
 
 export const activitySourceEnum = pgEnum("activity_source", [

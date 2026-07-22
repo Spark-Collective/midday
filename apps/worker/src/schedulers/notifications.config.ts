@@ -11,4 +11,14 @@ export const notificationsStaticSchedulers: StaticSchedulerConfig[] = [
       tz: "UTC",
     },
   },
+  {
+    name: "job-health-check-scheduler",
+    queue: "notifications",
+    cron: "5 * * * *", // hourly at :05, sweeps the previous hour
+    jobName: "job-health-check",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
 ];

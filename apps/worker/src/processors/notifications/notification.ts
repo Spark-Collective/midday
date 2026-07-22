@@ -56,6 +56,21 @@ export class NotificationProcessor extends BaseProcessor<NotificationPayload> {
       // ========================================
       // Insight Notifications
       // ========================================
+      case "job_failed": {
+        await notifications.create("job_failed", payload.teamId, {
+          failedCount: payload.failedCount,
+          windowStart: payload.windowStart,
+          windowEnd: payload.windowEnd,
+          breakdown: payload.breakdown,
+        });
+
+        this.logger.warn("Job failure notification sent", {
+          teamId: payload.teamId,
+          failedCount: payload.failedCount,
+        });
+        break;
+      }
+
       case "insight_ready": {
         await notifications.create(
           "insight_ready",

@@ -36,6 +36,7 @@ export const createActivitySchema = z.object({
     "recurring_series_paused",
     "recurring_invoice_upcoming",
     "insight_ready",
+    "job_failed",
   ]),
   source: z.enum(["system", "user"]).default("system"),
   priority: z.number().int().min(1).max(10).default(5),
@@ -373,6 +374,23 @@ export type TransactionsAssignedInput = z.infer<
 >;
 export type InsightReadyInput = z.infer<typeof insightReadySchema>;
 
+export const jobFailedSchema = z.object({
+  users: z.array(userSchema),
+  failedCount: z.number(),
+  windowStart: z.string(),
+  windowEnd: z.string(),
+  breakdown: z.array(
+    z.object({
+      queue: z.string(),
+      jobName: z.string(),
+      count: z.number(),
+      lastError: z.string().optional(),
+    }),
+  ),
+});
+
+export type JobFailedInput = z.infer<typeof jobFailedSchema>;
+
 // Notification types map - all available notification types with their data structures
 export type NotificationTypes = {
   transactions_created: TransactionsCreatedInput;
@@ -398,4 +416,5 @@ export type NotificationTypes = {
   recurring_series_paused: RecurringSeriesPausedInput;
   recurring_invoice_upcoming: RecurringInvoiceUpcomingInput;
   insight_ready: InsightReadyInput;
+  job_failed: JobFailedInput;
 };

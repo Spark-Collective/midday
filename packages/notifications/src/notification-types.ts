@@ -135,6 +135,11 @@ export const allNotificationTypes: NotificationType[] = [
     category: "invoices",
     order: 1,
   },
+  {
+    type: "job_failed",
+    channels: ["in_app"],
+    showInSettings: false,
+  },
 ];
 
 // Get all notification types (including hidden ones)
