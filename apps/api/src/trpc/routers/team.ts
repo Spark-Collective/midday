@@ -37,8 +37,12 @@ import {
   updateTeamById,
   updateTeamMember,
 } from "@midday/db/queries";
+import { resend } from "@api/services/resend";
+import { InviteEmail } from "@midday/email/emails/invite";
+import { getI18n } from "@midday/email/locales";
+import { render } from "@midday/email/render";
 import { triggerJob } from "@midday/job-client";
-import { tasks } from "@trigger.dev/sdk";
+import { logger } from "@midday/logger";
 import { TRPCError } from "@trpc/server";
 
 export const teamRouter = createTRPCRouter({
@@ -353,14 +357,36 @@ export const teamRouter = createTRPCRouter({
         },
       );
 
-      // Only trigger email sending if there are valid invites
+      // fix(spark): trigger.dev is not wired on the self-host — send invite
+      // emails directly via Resend. Invite rows must survive an email failure.
       if (invites.length > 0) {
-        await tasks.trigger("invite-team-members", {
-          teamId: teamId!,
-          invites,
-          ip,
-          locale: "en",
-        } satisfies InviteTeamMembersPayload);
+        try {
+          const { t } = getI18n({ locale: "en" });
+          await resend.batch.send(
+            await Promise.all(
+              invites.map(async (invite) => ({
+                from: "Spark Ops <midday@mail.sparkcollective.be>",
+                to: [invite.email],
+                subject: t("invite.subject", {
+                  invitedByName: invite.invitedByName,
+                  teamName: invite.teamName,
+                }),
+                html: await render(
+                  InviteEmail({
+                    invitedByEmail: invite.invitedByEmail,
+                    invitedByName: invite.invitedByName,
+                    email: invite.email,
+                    teamName: invite.teamName,
+                    ip,
+                    locale: "en",
+                  }),
+                ),
+              })),
+            ),
+          );
+        } catch (error) {
+          logger.error("Failed to send team invite emails", { error });
+        }
       }
 
       // Return information about the invitation process
