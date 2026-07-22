@@ -255,6 +255,31 @@ describe("postTransaction", () => {
       /no gl_account_id mapping/,
     );
   });
+
+  test("bookie override books an uncategorised transaction with a VAT split", async () => {
+    const t = await db.query(
+      `INSERT INTO transactions (team_id, date, name, amount, currency, bank_account_id)
+       VALUES ($1, '2025-06-15', 'Resto zonder categorie', -121, 'EUR', $2) RETURNING id`,
+      [teamId, bankAccountId],
+    );
+    const res = await postTransaction(db, {
+      transactionId: t.rows[0].id,
+      override: { accountCode: "612900", vatAmount: 21 },
+    });
+    const lines = await db.query(
+      `SELECT a.code, a.system_key, ll.debit, ll.credit FROM ledger_lines ll
+         JOIN gl_accounts a ON a.id = ll.account_id
+        WHERE ll.entry_id = $1 ORDER BY a.code`,
+      [res.entryId],
+    );
+    // 612900 is 50% deductible: cost 100 + 10.50 non-deductible VAT, 10.50 to 411000.
+    const cost = lines.rows.find((r) => r.code === "612900");
+    const vat = lines.rows.find((r) => r.system_key === "vat_deductible");
+    const bank = lines.rows.find((r) => r.code === "550001");
+    expect(Number(cost?.debit)).toBe(110.5);
+    expect(Number(vat?.debit)).toBe(10.5);
+    expect(Number(bank?.credit)).toBe(121);
+  });
 });
 
 describe("opening balances (S9, open-item granularity)", () => {

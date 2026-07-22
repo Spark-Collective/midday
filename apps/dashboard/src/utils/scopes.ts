@@ -45,6 +45,15 @@ export const RESOURCES = [
     ],
   },
   {
+    key: "ledger",
+    name: "Ledger",
+    description: "Access to the accounting ledger (bookings, reports, VAT)",
+    scopes: [
+      { scope: "ledger.read", type: "read", label: "Read" },
+      { scope: "ledger.write", type: "write", label: "Write" },
+    ],
+  },
+  {
     key: "transactions",
     name: "Transactions",
     description: "Access to transaction data",

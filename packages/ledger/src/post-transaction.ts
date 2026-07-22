@@ -22,6 +22,15 @@ import { LedgerError, type LineInput, postEntry } from "./post.js";
 
 export type PostTransactionInput = {
   transactionId: string;
+  /** Judgment override (the bookie): book to this account instead of the
+   *  category mapping, optionally with the VAT split the bank feed lacks. */
+  override?: {
+    accountCode: string;
+    /** VAT amount in the transaction's currency (gross booking otherwise). */
+    vatAmount?: number;
+    /** Defaults to the account's vat_deductible_pct, else 100. */
+    vatDeductiblePct?: number;
+  };
 };
 
 export async function postTransaction(
@@ -41,8 +50,10 @@ export async function postTransaction(
   if (txn.status !== "posted") {
     throw new LedgerError(`transaction status '${txn.status}' does not post`);
   }
-  if (!txn.category_slug) {
-    throw new LedgerError("transaction has no category — categorise it first");
+  if (!txn.category_slug && !input.override) {
+    throw new LedgerError(
+      "transaction has no category — categorise it first or book with an override",
+    );
   }
   if (Number(txn.amount) === 0) {
     throw new LedgerError("zero-amount transaction does not post");
@@ -83,6 +94,22 @@ export async function postTransaction(
       [txn.team_id],
     );
     counterAccountId = t.rows[0]?.id;
+  } else if (input.override) {
+    const acc = await client.query(
+      `SELECT id, vat_deductible_pct FROM gl_accounts WHERE team_id = $1 AND code = $2`,
+      [txn.team_id, input.override.accountCode],
+    );
+    if (acc.rowCount === 0) {
+      throw new LedgerError(
+        `override account ${input.override.accountCode} not found`,
+      );
+    }
+    counterAccountId = acc.rows[0].id;
+    vatPct =
+      input.override.vatDeductiblePct ??
+      (acc.rows[0].vat_deductible_pct !== null
+        ? Number(acc.rows[0].vat_deductible_pct)
+        : 100);
   } else {
     const cat = await client.query(
       `SELECT tc.gl_account_id, a.vat_deductible_pct
@@ -120,11 +147,12 @@ export async function postTransaction(
   const fnAbs = fnAbsCents / 100;
   const fxRate = Math.abs(fnAbs / amount);
 
-  // VAT split (only for categorised, tax-carrying transactions).
+  // VAT split (from the bank feed's tax_amount, or the bookie's override).
   let vatFn = 0;
   let deductible = 0;
-  if (!isTransfer && txn.tax_amount) {
-    const taxAbs = Math.abs(Number(txn.tax_amount));
+  const taxSource = input.override?.vatAmount ?? txn.tax_amount;
+  if (!isTransfer && taxSource) {
+    const taxAbs = Math.abs(Number(taxSource));
     vatFn = cents(taxAbs * (currency === functional ? 1 : fxRate)) / 100;
     deductible = cents(vatFn * (vatPct / 100)) / 100;
   }
