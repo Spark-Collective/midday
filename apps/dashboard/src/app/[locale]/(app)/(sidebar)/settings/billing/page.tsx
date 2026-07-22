@@ -1,6 +1,5 @@
 import { Card } from "@midday/ui/card";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { ManageSubscription } from "@/components/manage-subscription";
 import { Orders } from "@/components/orders";
 import { getQueryClient, prefetch, trpc } from "@/trpc/server";
@@ -37,18 +36,10 @@ export default async function Billing() {
           </h2>
 
           <Card className="flex flex-col gap-2 p-4">
-            <p className="text-sm font-medium">Midday is joining Ramp</p>
+            <p className="text-sm font-medium">Self-hosted</p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              We're winding Midday down. Your account stays fully active —
-              there's nothing to subscribe to and you won't be charged. Read
-              more on the{" "}
-              <Link
-                href="https://midday.ai/updates/joining-ramp"
-                className="underline hover:text-foreground transition-colors"
-              >
-                announcement post
-              </Link>
-              .
+              This Midday instance is self-hosted by Spark Collective. There is
+              no subscription and nothing will be charged.
             </p>
           </Card>
         </div>
