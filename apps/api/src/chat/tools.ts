@@ -1,6 +1,7 @@
+import { google } from "@ai-sdk/google";
 import type { MCPClient } from "@ai-sdk/mcp";
 import { createMCPClient } from "@ai-sdk/mcp";
-import { google } from "@ai-sdk/google";
+
 import { createMcpServer } from "@api/mcp/server";
 import type { McpContext } from "@api/mcp/types";
 import { expandScopes } from "@api/utils/scopes";
@@ -9,6 +10,44 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { PrepareStepFunction, Tool } from "ai";
 import type { ToolIndex } from "toolpick";
 import { createToolIndex, fileCache } from "toolpick";
+
+// Gemini's batchEmbedContents API caps at 100 requests per call, but
+// @ai-sdk/google declares maxEmbeddingsPerCall = 2048 and happily overflows
+// it ("at most 100 requests can be in one batch" — this killed every bot
+// message during tool-index warm-up). Wrap the model to chunk transparently,
+// whether the caller respects maxEmbeddingsPerCall or hits doEmbed directly.
+const GEMINI_EMBED_BATCH = 100;
+
+function chunkedGeminiEmbedding() {
+  const base = google.embeddingModel("gemini-embedding-001");
+  const wrapper = Object.create(
+    Object.getPrototypeOf(base),
+    Object.getOwnPropertyDescriptors(base),
+  );
+  wrapper.maxEmbeddingsPerCall = GEMINI_EMBED_BATCH;
+  wrapper.doEmbed = async (
+    options: Parameters<typeof base.doEmbed>[0],
+  ): Promise<Awaited<ReturnType<typeof base.doEmbed>>> => {
+    const { values } = options;
+    if (values.length <= GEMINI_EMBED_BATCH) {
+      return base.doEmbed(options);
+    }
+    const embeddings: Awaited<ReturnType<typeof base.doEmbed>>["embeddings"] =
+      [];
+    let tokens = 0;
+    let last: Awaited<ReturnType<typeof base.doEmbed>> | undefined;
+    for (let i = 0; i < values.length; i += GEMINI_EMBED_BATCH) {
+      last = await base.doEmbed({
+        ...options,
+        values: values.slice(i, i + GEMINI_EMBED_BATCH),
+      });
+      embeddings.push(...last.embeddings);
+      tokens += last.usage?.tokens ?? 0;
+    }
+    return { ...last!, embeddings, usage: { tokens } };
+  };
+  return wrapper as typeof base;
+}
 
 export type ChatMCPClient = Awaited<ReturnType<typeof createMCPClient>>;
 type ToolDefinitions = Awaited<ReturnType<MCPClient["listTools"]>>;
@@ -45,7 +84,7 @@ export function ensureToolIndex(ctx: McpContext): Promise<ToolIndex<any>> {
     cachedDefinitions = definitions;
 
     const index = await createToolIndex(tools, {
-      embeddingModel: google.embeddingModel("gemini-embedding-001"),
+      embeddingModel: chunkedGeminiEmbedding(),
       embeddingCache: fileCache(".toolpick-cache.json"),
       relatedTools: {
         invoices_create: ["customers_list"],
