@@ -277,6 +277,28 @@ Forwarded invoices flow in via Midday's built-in Gmail connector.
 
 ---
 
+## 10b. Messaging bots (Telegram / WhatsApp)
+
+The fork ships full chat integrations (assistant, receipt upload via chat,
+activity notifications) — design doc: `docs/bot-messaging-integration.md`.
+Everything is env-gated; no code changes needed. Requirements:
+
+- **Schema:** migrations `0037_add_platform_identity_tables.sql` +
+  `0038_add_provider_notification_batches.sql` applied.
+- **Telegram:** `TELEGRAM_BOT_TOKEN` (BotFather), `TELEGRAM_WEBHOOK_SECRET_TOKEN`
+  (any random hex), `TELEGRAM_BOT_USERNAME` in the api/worker env, plus dashboard
+  build arg `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (the connect button hides without
+  it). Register the webhook: `POST /bot<token>/setWebhook` with
+  `url=https://<api-host>/webhook/telegram` + the secret token.
+- **WhatsApp:** Meta Business app + Cloud API number + pre-approved message
+  templates; env `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`,
+  `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`,
+  dashboard build arg `NEXT_PUBLIC_WHATSAPP_NUMBER`. Callback URL is
+  `https://<api-host>/webhook/whatsapp` (GET = Meta verification).
+- Redis must be up (chat state) and the worker running (notification batches
+  flush on a 1-minute cron). Install the app per team in the dashboard, then
+  link an account via the QR deep-link.
+
 ## 11. Worker jobs (BullMQ) cheat-sheet
 
 Upstream ran background work on Trigger.dev; this fork runs BullMQ in the worker.
