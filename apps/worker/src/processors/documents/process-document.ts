@@ -320,7 +320,7 @@ export class ProcessDocumentProcessor extends BaseProcessor<ProcessDocumentPaylo
             fileName,
             teamId,
           },
-          "documents",
+          "classification",
           {
             jobId: `classify-img_${teamId}_${fileName}_${Date.now()}`,
             timeout: TIMEOUTS.CLASSIFICATION_JOB_WAIT,
@@ -476,7 +476,7 @@ export class ProcessDocumentProcessor extends BaseProcessor<ProcessDocumentPaylo
           fileName,
           teamId,
         },
-        "documents",
+        "classification",
         {
           jobId: `classify-doc_${teamId}_${fileName}_${Date.now()}`,
           timeout: TIMEOUTS.CLASSIFICATION_JOB_WAIT,
