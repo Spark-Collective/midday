@@ -7,18 +7,26 @@ import {
 } from "date-fns";
 import { normalizeCurrencyCode } from "./currency";
 
-export function formatSize(bytes: number): string {
+export function formatSize(bytes: number | string | null | undefined): string {
+  // spark: guard missing/non-finite/string size (metadata.size can be a JSONB
+  // string or absent). An invalid input previously produced an invalid unit and
+  // crashed the whole Vault table render ("No results").
+  const n = typeof bytes === "string" ? Number(bytes) : bytes;
+  if (n == null || !Number.isFinite(n) || n <= 0) {
+    return "—";
+  }
+
   const units = ["byte", "kilobyte", "megabyte", "gigabyte", "terabyte"];
 
   const unitIndex = Math.max(
     0,
-    Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1),
+    Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1),
   );
 
   return Intl.NumberFormat("en-US", {
     style: "unit",
     unit: units[unitIndex],
-  }).format(+Math.round(bytes / 1024 ** unitIndex));
+  }).format(+Math.round(n / 1024 ** unitIndex));
 }
 
 type FormatAmountParams = {
