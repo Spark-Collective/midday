@@ -1,6 +1,6 @@
 import type { MCPClient } from "@ai-sdk/mcp";
 import { createMCPClient } from "@ai-sdk/mcp";
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { createMcpServer } from "@api/mcp/server";
 import type { McpContext } from "@api/mcp/types";
 import { expandScopes } from "@api/utils/scopes";
@@ -45,7 +45,7 @@ export function ensureToolIndex(ctx: McpContext): Promise<ToolIndex<any>> {
     cachedDefinitions = definitions;
 
     const index = await createToolIndex(tools, {
-      embeddingModel: openai.embeddingModel("text-embedding-3-small"),
+      embeddingModel: google.embeddingModel("gemini-embedding-001"),
       embeddingCache: fileCache(".toolpick-cache.json"),
       relatedTools: {
         invoices_create: ["customers_list"],

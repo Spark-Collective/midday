@@ -18,6 +18,7 @@
       "name": "@midday/api",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.64",
+        "@ai-sdk/google": "catalog:",
         "@ai-sdk/mcp": "^1.0.30",
         "@ai-sdk/openai": "catalog:",
         "@composio/core": "^0.6.7",

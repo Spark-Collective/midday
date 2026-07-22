@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import {
   generateText,
   type ModelMessage,
@@ -75,7 +75,7 @@ export async function generateChatTitle(
   if (!trimmed) return null;
 
   const { output: result } = await generateText({
-    model: openai("gpt-4o-mini"),
+    model: google("gemini-2.5-flash-lite"),
     output: Output.object({ schema: titleSchema }),
     prompt: `Generate a concise 3-5 word title for this conversation.\n\nUser: ${trimmed}`,
   });

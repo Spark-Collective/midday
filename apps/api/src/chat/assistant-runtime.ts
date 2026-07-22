@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import {
   buildPrepareStep,
   createExecutionClient,
@@ -48,24 +48,18 @@ export async function streamMiddayAssistant(params: {
     }
 
     const agent = new ToolLoopAgent({
-      model: openai("gpt-4.1-mini"),
+      // Gemini (the box's only LLM key). No web_search: Gemini rejects its
+      // search-grounding tool alongside function calling in one request.
+      model: google("gemini-2.5-flash"),
       instructions: systemPrompt,
       tools: {
         ...mcpTools,
         ...composioMetaTools,
         search_tools: getSearchTool(),
-        web_search: openai.tools.webSearch({
-          searchContextSize: "medium",
-          userLocation: {
-            type: "approximate",
-            country: mcpCtx.countryCode ?? undefined,
-            timezone: mcpCtx.timezone ?? undefined,
-          },
-        }),
       },
       prepareStep: buildPrepareStep({
         maxTools: 12,
-        alwaysActive: ["web_search", "search_tools", ...composioToolNames],
+        alwaysActive: ["search_tools", ...composioToolNames],
       }),
       stopWhen: stepCountIs(10),
       onFinish: closeClient,
