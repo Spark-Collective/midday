@@ -74,6 +74,20 @@ done
 docker compose -f compose.yml up -d
 ```
 
+**Prefer same-origin.** Serving the API on a separate subdomain (`api.yourco.be`)
+makes every client-side call cross-origin (CORS + cross-domain cookies), which is
+fragile and breaks in some browsers/proxies. Instead, route the browser-facing API
+paths (`/trpc`, `/files`, `/chat`) to the backend on the SAME host as the dashboard
+via the reverse proxy, and build the dashboard with
+`NEXT_PUBLIC_API_URL=https://<dashboard-host>`. Example Caddy:
+```
+yourco.be {
+  @api path /trpc* /files* /chat*
+  handle @api { reverse_proxy localhost:3003 }
+  handle      { reverse_proxy localhost:3001 }
+}
+```
+
 > The dashboard bakes `NEXT_PUBLIC_*` at **build** time. If you change the API URL
 > or Supabase key, you must rebuild the dashboard image, not just restart it.
 
