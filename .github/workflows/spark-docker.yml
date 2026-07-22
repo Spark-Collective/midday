@@ -82,7 +82,7 @@ jobs:
             NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_slrH7uz8CIiS7k8DTGG2Pw_H-1vGkow
             NEXT_PUBLIC_SUPABASE_ID=uzdlmwhvlzmjzkjcjgut
             NEXT_PUBLIC_URL=https://ops.sparkcollective.be
-            NEXT_PUBLIC_API_URL=https://ops-api.sparkcollective.be
+            NEXT_PUBLIC_API_URL=https://ops.sparkcollective.be
             NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=spark_bookie_bot
 
   publish-tars:
