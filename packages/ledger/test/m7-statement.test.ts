@@ -53,6 +53,22 @@ beforeAll(async () => {
       { accountCode: "550001", credit: 400 },
     ],
   });
+  // 2025 year-end processing: allocation to reserves must NOT zero the shown
+  // result (Belgian layout shows the pre-allocation result).
+  await db.query(
+    `INSERT INTO gl_accounts (team_id, code, name, type) VALUES
+       ($1, '693000', 'Over te dragen winst', 'expense')`,
+    [teamId],
+  );
+  await postEntry(db, {
+    teamId,
+    journalCode: "890",
+    date: "2025-12-31",
+    lines: [
+      { accountCode: "693000", debit: 600 },
+      { systemKey: "retained_earnings", credit: 600 },
+    ],
+  });
   // 2026: revenue 500, cost 300 (one IT, one VAT-carrying) -> result 200
   await postEntry(db, {
     teamId,
@@ -116,8 +132,8 @@ describe("statements (M7)", () => {
     expect(Math.round((activa - passiva) * 100)).toBe(0);
     const ev = s.sections.find((x) => x.key === "eigen_vermogen")!;
     const unalloc = ev.rows.find((r) => r.code === "—");
-    // 2025 result 600 + 2026 result 221, nothing processed to reserves
-    expect(unalloc?.values).toEqual([821]);
+    // 2025's 600 was processed to reserves; only 2026's 221 is unallocated
+    expect(unalloc?.values).toEqual([221]);
     const tb = await getTrialBalance(db, { teamId, to: "2026-12-31" });
     const bankTb = tb.find((r) => r.code === "550001")?.balance ?? 0;
     const liquide = s.sections.find((x) => x.key === "liquide")!;

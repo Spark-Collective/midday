@@ -189,12 +189,15 @@ export async function getStatement(
     });
   }
 
-  // Result line. Income: credits minus debits across every section (natural
-  // signs restored). Balance: the unallocated P&L accumulation belongs to
-  // equity — reported as the balancing "resultaat van het boekjaar".
+  // Result line. Income: credits minus debits across every section EXCEPT the
+  // resultaatverwerking (69/79) — processed years would otherwise net to zero;
+  // the Belgian layout shows the pre-allocation result. Balance: the
+  // unallocated P&L accumulation belongs to equity — reported as the
+  // balancing "resultaat van het boekjaar".
   const result = input.periods.map((_, i) => {
     let total = 0;
     for (const s of sections) {
+      if (s.key === "verwerking") continue;
       const sign = s.direction === "credit" ? 1 : -1;
       total += sign * s.totals[i]!;
     }
