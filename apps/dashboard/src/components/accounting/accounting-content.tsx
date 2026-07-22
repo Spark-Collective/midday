@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@midday/ui/button";
 import {
   Table,
   TableBody,
@@ -9,9 +10,24 @@ import {
   TableRow,
 } from "@midday/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@midday/ui/tabs";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTRPC } from "@/trpc/client";
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 const eur = new Intl.NumberFormat("nl-BE", {
   style: "currency",
@@ -172,6 +188,120 @@ function OpenItemsTab() {
   );
 }
 
+function PeriodsTab() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery(
+    trpc.ledger.periods.queryOptions({ year }),
+  );
+
+  const invalidate = () =>
+    queryClient.invalidateQueries({
+      queryKey: trpc.ledger.periods.queryKey({ year }),
+    });
+
+  const closePeriodMutation = useMutation(
+    trpc.ledger.closePeriod.mutationOptions({
+      onSuccess: invalidate,
+      onError: (error, variables) => {
+        if (
+          window.confirm(
+            `${error.message}\n\nForce close ${variables.year}-${variables.month} anyway?`,
+          )
+        ) {
+          closePeriodMutation.mutate({ ...variables, force: true });
+        }
+      },
+    }),
+  );
+
+  const reopenPeriodMutation = useMutation(
+    trpc.ledger.reopenPeriod.mutationOptions({ onSuccess: invalidate }),
+  );
+
+  if (isLoading)
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  return (
+    <div className="space-y-4">
+      <select
+        className="border bg-background px-2 py-1 text-sm"
+        value={year}
+        onChange={(e) => setYear(Number(e.target.value))}
+      >
+        {[now.getFullYear() - 1, now.getFullYear()].map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+      <Table className="max-w-xl">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Month</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Entries</TableHead>
+            <TableHead className="text-right">To book</TableHead>
+            <TableHead className="w-28" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data?.map((p) => (
+            <TableRow key={p.month}>
+              <TableCell>{MONTHS[p.month - 1]}</TableCell>
+              <TableCell>
+                {p.status === "closed" ? (
+                  <span className="text-muted-foreground">Closed</span>
+                ) : (
+                  "Open"
+                )}
+              </TableCell>
+              <TableCell className="text-right font-mono tabular-nums">
+                {p.entries}
+              </TableCell>
+              <TableCell className="text-right font-mono tabular-nums">
+                {p.unbooked > 0 ? p.unbooked : "—"}
+              </TableCell>
+              <TableCell className="text-right">
+                {p.status === "closed" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      reopenPeriodMutation.mutate({ year, month: p.month })
+                    }
+                  >
+                    Reopen
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={closePeriodMutation.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Close ${MONTHS[p.month - 1]} ${year}? Posting into a closed period is blocked.`,
+                        )
+                      ) {
+                        closePeriodMutation.mutate({ year, month: p.month });
+                      }
+                    }}
+                  >
+                    Close
+                  </Button>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function VatReturnTab() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -180,6 +310,25 @@ function VatReturnTab() {
   const { data, isLoading } = useQuery(
     trpc.ledger.vatReturn.queryOptions({ year, quarter }),
   );
+  const xmlQuery = useQuery({
+    ...trpc.ledger.vatReturnXml.queryOptions({ year, quarter }),
+    enabled: false,
+  });
+
+  const downloadXml = async () => {
+    const { data: result, error } = await xmlQuery.refetch();
+    if (error || !result) {
+      window.alert(error?.message ?? "Failed to generate the Intervat XML");
+      return;
+    }
+    const blob = new Blob([result.xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = result.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -205,6 +354,14 @@ function VatReturnTab() {
             </option>
           ))}
         </select>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={xmlQuery.isFetching}
+          onClick={downloadXml}
+        >
+          Download Intervat XML
+        </Button>
       </div>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -254,6 +411,7 @@ export function AccountingContent() {
           <TabsTrigger value="general-ledger">General ledger</TabsTrigger>
           <TabsTrigger value="open-items">Open items</TabsTrigger>
           <TabsTrigger value="vat">VAT return</TabsTrigger>
+          <TabsTrigger value="periods">Periods</TabsTrigger>
         </TabsList>
         <TabsContent value="trial-balance">
           <TrialBalanceTab />
@@ -266,6 +424,9 @@ export function AccountingContent() {
         </TabsContent>
         <TabsContent value="vat">
           <VatReturnTab />
+        </TabsContent>
+        <TabsContent value="periods">
+          <PeriodsTab />
         </TabsContent>
       </Tabs>
     </div>

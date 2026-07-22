@@ -16,4 +16,14 @@ export const ledgerStaticSchedulers: StaticSchedulerConfig[] = [
       tz: "UTC",
     },
   },
+  {
+    name: "ledger-amortization-scheduler",
+    queue: "accounting",
+    cron: "0 2 1 * *", // 1st of the month 02:00 UTC, posts the previous month
+    jobName: "ledger-amortization",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
 ];

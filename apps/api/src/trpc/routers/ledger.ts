@@ -1,11 +1,14 @@
 import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
+  closePeriod,
   computeVatGrids,
+  generateVatReturn,
   getGeneralLedger,
   getOpenItems,
   getTrialBalance,
 } from "@midday/ledger";
+import type { Pool } from "pg";
 import { z } from "zod";
 
 // Read-only ledger reports. Raw parameterised SQL over the accounting views
@@ -77,5 +80,112 @@ export const ledgerRouter = createTRPCRouter({
         teamId: teamId!,
         period: { year: input.year, quarter: input.quarter },
       });
+    }),
+
+  // Intervat-ready VATConsignment XML. Declarant details come from env
+  // (self-host, single company); submission itself stays outside the platform.
+  vatReturnXml: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2000).max(2100),
+        quarter: z.number().int().min(1).max(4),
+      }),
+    )
+    .query(async ({ ctx: { teamId }, input }) => {
+      const declarant = {
+        vatNumber: process.env.LEDGER_VAT_NUMBER ?? "",
+        name: process.env.LEDGER_COMPANY_NAME ?? "",
+        street: process.env.LEDGER_COMPANY_STREET ?? "",
+        postCode: process.env.LEDGER_COMPANY_POSTCODE ?? "",
+        city: process.env.LEDGER_COMPANY_CITY ?? "",
+        email: process.env.LEDGER_COMPANY_EMAIL ?? "",
+      };
+      if (!declarant.vatNumber || !declarant.name) {
+        throw new Error(
+          "LEDGER_VAT_NUMBER / LEDGER_COMPANY_* env vars not configured",
+        );
+      }
+      const result = await generateVatReturn(ledgerDb(), {
+        teamId: teamId!,
+        period: { year: input.year, quarter: input.quarter },
+        declarant,
+      });
+      return {
+        xml: result.xml,
+        grids: result.grids,
+        warnings: result.warnings,
+        filename: `intervat-${input.year}-Q${input.quarter}.xml`,
+      };
+    }),
+
+  // The close cockpit: month statuses + what still blocks a close.
+  periods: protectedProcedure
+    .input(z.object({ year: z.number().int().min(2000).max(2100) }))
+    .query(async ({ ctx: { teamId }, input }) => {
+      const r = await ledgerDb().query(
+        `SELECT fp.month, fp.status,
+                (SELECT COUNT(*)::int FROM journal_entries je
+                  WHERE je.team_id = fp.team_id AND je.status IN ('posted','reversed')
+                    AND EXTRACT(YEAR FROM je.date) = fp.year
+                    AND EXTRACT(MONTH FROM je.date) = fp.month) AS entries,
+                (SELECT COUNT(*)::int FROM transactions t
+                  WHERE t.team_id = fp.team_id AND t.status = 'posted' AND t.amount <> 0
+                    AND EXTRACT(YEAR FROM t.date) = fp.year
+                    AND EXTRACT(MONTH FROM t.date) = fp.month
+                    AND NOT EXISTS (SELECT 1 FROM journal_entries je
+                                     WHERE je.team_id = t.team_id
+                                       AND je.source_type = 'transaction'
+                                       AND je.source_id = t.id
+                                       AND je.status = 'posted')) AS unbooked
+           FROM fiscal_periods fp
+          WHERE fp.team_id = $1 AND fp.year = $2
+          ORDER BY fp.month`,
+        [teamId, input.year],
+      );
+      return r.rows as Array<{
+        month: number;
+        status: string;
+        entries: number;
+        unbooked: number;
+      }>;
+    }),
+
+  closePeriod: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2000).max(2100),
+        month: z.number().int().min(1).max(12),
+        force: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const client = await (ledgerDb() as unknown as Pool).connect();
+      try {
+        return await closePeriod(client, {
+          teamId: teamId!,
+          year: input.year,
+          month: input.month,
+          force: input.force,
+        });
+      } finally {
+        client.release();
+      }
+    }),
+
+  reopenPeriod: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2000).max(2100),
+        month: z.number().int().min(1).max(12),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const r = await ledgerDb().query(
+        `UPDATE fiscal_periods SET status = 'open'
+          WHERE team_id = $1 AND year = $2 AND month = $3 AND status = 'closed'
+          RETURNING month`,
+        [teamId, input.year, input.month],
+      );
+      return { reopened: (r.rowCount ?? 0) > 0 };
     }),
 });
