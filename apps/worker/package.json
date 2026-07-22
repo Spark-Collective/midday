@@ -19,6 +19,7 @@
     "@midday/bot": "workspace:*",
     "@midday/customers": "workspace:*",
     "@midday/db": "workspace:*",
+    "@midday/ledger": "workspace:*",
     "@midday/documents": "workspace:*",
     "@midday/email": "workspace:*",
     "@midday/health": "workspace:*",

@@ -66,6 +66,8 @@ type Props = {
   exportProvider?: string | null;
   exportedAt?: string | null;
   hasPendingSuggestion?: boolean;
+  /** Entry number in the native ledger (booked) — takes precedence. */
+  journalEntryNumber?: string | null;
 };
 
 export function TransactionStatus({
@@ -77,6 +79,7 @@ export function TransactionStatus({
   exportProvider,
   exportedAt,
   hasPendingSuggestion,
+  journalEntryNumber,
 }: Props) {
   if (rawStatus === "archived") {
     return <span className="cursor-default text-[#878787]">Archived</span>;
@@ -84,6 +87,26 @@ export function TransactionStatus({
 
   if (rawStatus === "excluded") {
     return <span className="cursor-default text-[#878787]">Excluded</span>;
+  }
+
+  if (journalEntryNumber) {
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="cursor-default font-mono text-[13px]">
+              Booked {journalEntryNumber}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent sideOffset={10} className="text-xs">
+            <p>
+              Posted in the ledger as {journalEntryNumber}
+              {!isFulfilled && " — receipt still missing"}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
   }
 
   if (hasExportError && !isExported) {
@@ -108,10 +131,13 @@ export function TransactionStatus({
       <TooltipProvider delayDuration={0}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="cursor-default">Ready to export</span>
+            <span className="cursor-default">To book</span>
           </TooltipTrigger>
           <TooltipContent sideOffset={10} className="text-xs">
-            <p>Receipt attached. Ready for export.</p>
+            <p>
+              Receipt attached, not yet in the ledger. Mapped categories book
+              automatically; the rest is a bookie judgment call.
+            </p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

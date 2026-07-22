@@ -12,6 +12,7 @@ import { inboxProcessors } from "./inbox";
 import { insightsProcessors } from "./insights";
 import { institutionsProcessors } from "./institutions";
 import { invoiceProcessors } from "./invoices";
+import { ledgerProcessors } from "./ledger";
 import { notificationProcessors } from "./notifications";
 import { peppolProcessors } from "./peppol";
 import { ratesProcessors } from "./rates";
@@ -39,6 +40,11 @@ for (const [jobName, processor] of Object.entries(bankProcessors)) {
 
 // Register peppol processors (spark)
 for (const [jobName, processor] of Object.entries(peppolProcessors)) {
+  processors.set(jobName, processor);
+}
+
+// Register ledger processors (spark)
+for (const [jobName, processor] of Object.entries(ledgerProcessors)) {
   processors.set(jobName, processor);
 }
 

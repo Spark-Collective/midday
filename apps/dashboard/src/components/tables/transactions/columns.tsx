@@ -703,6 +703,7 @@ export const columns: ColumnDef<Transaction>[] = [
           exportProvider={row.original.exportProvider}
           exportedAt={row.original.exportedAt}
           hasPendingSuggestion={row.original.hasPendingSuggestion}
+          journalEntryNumber={row.original.journalEntryNumber}
         />
       );
     },

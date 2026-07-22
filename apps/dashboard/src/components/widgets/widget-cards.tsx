@@ -95,7 +95,7 @@ export function WidgetCards() {
   const reviewDetail =
     data.transactionsToReview.count === 0
       ? "All up to date"
-      : "Ready to export";
+      : "To book";
 
   const inboxValue = String(data.inboxPending.count);
   const inboxDetail =

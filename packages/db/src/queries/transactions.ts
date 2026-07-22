@@ -533,6 +533,12 @@ export async function getTransactions(
         sql<boolean>`(EXISTS (SELECT 1 FROM ${transactionAttachments} WHERE ${eq(transactionAttachments.transactionId, transactions.id)} AND ${eq(transactionAttachments.teamId, teamId)}) OR ${transactions.status} = 'completed')`.as(
           "isFulfilled",
         ),
+      journalEntryNumber: sql<string | null>`(
+          SELECT je.entry_number FROM journal_entries je
+          WHERE je.team_id = ${teamId} AND je.source_type = 'transaction'
+          AND je.source_id = ${transactions.id} AND je.status = 'posted'
+          LIMIT 1
+        )`.as("journalEntryNumber"),
       hasPendingSuggestion: sql<boolean>`EXISTS (
           SELECT 1 FROM ${transactionMatchSuggestions} tms 
           WHERE tms.transaction_id = ${transactions.id} 
@@ -784,6 +790,12 @@ export async function getTransactionById(
         sql<boolean>`(EXISTS (SELECT 1 FROM ${transactionAttachments} WHERE ${eq(transactionAttachments.transactionId, transactions.id)} AND ${eq(transactionAttachments.teamId, params.teamId)})) OR ${transactions.status} = 'completed'`.as(
           "isFulfilled",
         ),
+      journalEntryNumber: sql<string | null>`(
+          SELECT je.entry_number FROM journal_entries je
+          WHERE je.team_id = ${params.teamId} AND je.source_type = 'transaction'
+          AND je.source_id = ${transactions.id} AND je.status = 'posted'
+          LIMIT 1
+        )`.as("journalEntryNumber"),
       hasPendingSuggestion:
         sql<boolean>`${transactionMatchSuggestions.id} IS NOT NULL`.as(
           "hasPendingSuggestion",

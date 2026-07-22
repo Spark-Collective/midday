@@ -81,7 +81,7 @@ const defaultSearch = {
 const statusFilters: FilterItem<StatusFilter>[] = [
   { id: "blank", name: "No receipt" },
   { id: "receipt_match", name: "Receipt found" },
-  { id: "in_review", name: "Ready to export" },
+  { id: "in_review", name: "To book" },
   { id: "export_error", name: "Export failed" },
   { id: "exported", name: "Exported" },
   { id: "excluded", name: "Excluded" },

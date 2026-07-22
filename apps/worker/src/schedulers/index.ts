@@ -10,6 +10,7 @@ import { bankStaticSchedulers } from "./bank.config";
 import { insightsStaticSchedulers } from "./insights.config";
 import { institutionsStaticSchedulers } from "./institutions.config";
 import { invoicesStaticSchedulers } from "./invoices.config";
+import { ledgerStaticSchedulers } from "./ledger.config";
 import { notificationsStaticSchedulers } from "./notifications.config";
 import { peppolStaticSchedulers } from "./peppol.config";
 import { ratesStaticSchedulers } from "./rates.config";
@@ -27,6 +28,7 @@ export const staticSchedulerConfigs: StaticSchedulerConfig[] = [
   ...insightsStaticSchedulers,
   ...bankStaticSchedulers,
   ...peppolStaticSchedulers,
+  ...ledgerStaticSchedulers,
 ];
 
 /**
