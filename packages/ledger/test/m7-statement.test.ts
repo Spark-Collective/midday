@@ -150,6 +150,9 @@ describe("statements (M7)", () => {
     expect(o.costsYtd).toBe(279);
     expect(o.resultYtd).toBe(221);
     expect(o.revenuePrevYtd).toBe(1000);
+    // the 693000 allocation must NOT count as a cost (review finding):
+    expect(o.costsPrevYtd).toBe(400);
+    expect(o.resultPrevYtd).toBe(600);
     expect(o.costGroups.reduce((s, g) => s + g.amount, 0)).toBe(279);
     expect(o.costGroups[0]?.label).toBe("IT & materiaal");
     expect(o.bank.find((b) => b.code === "550001")?.balance).toBe(800);

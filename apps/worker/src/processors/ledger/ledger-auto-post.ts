@@ -12,7 +12,21 @@ import { BaseProcessor } from "../base";
  * bookie's Claude Code sessions. Idempotent: the partial unique index on
  * (source_type, source_id) and the invoice journal_entry_id pointer make a
  * double post impossible.
+ *
+ * Review hardening (2026-07-22):
+ * - sources with a REVERSED entry are never auto-rebooked (an operator
+ *   reversal is a hands-off signal; explicit rebooking goes through the
+ *   glove);
+ * - transactions before LEDGER_START_DATE (default 2026-01-01) are ignored —
+ *   pre-ledger history lives in the imported 899 entries, whatever their
+ *   Midday status says;
+ * - months whose fiscal period is closed are skipped instead of failing
+ *   hourly forever;
+ * - a run with failing items THROWS at the end so the job-health-check
+ *   alert fires (successes are already committed per item).
  */
+const LEDGER_START = process.env.LEDGER_START_DATE ?? "2026-01-01";
+
 export class LedgerAutoPostProcessor extends BaseProcessor<
   Record<string, never>
 > {
@@ -25,13 +39,21 @@ export class LedgerAutoPostProcessor extends BaseProcessor<
          JOIN transaction_categories tc
            ON tc.team_id = t.team_id AND tc.slug = t.category_slug
         WHERE t.status = 'posted' AND t.amount <> 0
+          AND t.date >= $1::date
           AND (tc.gl_account_id IS NOT NULL OR t.category_slug = 'transfer')
           AND NOT EXISTS (SELECT 1 FROM journal_entries je
                            WHERE je.team_id = t.team_id
                              AND je.source_type = 'transaction'
-                             AND je.source_id = t.id AND je.status = 'posted')
+                             AND je.source_id = t.id
+                             AND je.status IN ('posted', 'reversed'))
+          AND EXISTS (SELECT 1 FROM fiscal_periods fp
+                       WHERE fp.team_id = t.team_id
+                         AND fp.year = EXTRACT(YEAR FROM t.date)
+                         AND fp.month = EXTRACT(MONTH FROM t.date)
+                         AND fp.status = 'open')
         ORDER BY t.date, t.id
         LIMIT 500`,
+      [LEDGER_START],
     );
 
     let posted = 0;
@@ -39,7 +61,10 @@ export class LedgerAutoPostProcessor extends BaseProcessor<
     for (const row of candidates.rows) {
       const client = await pool.connect();
       try {
-        await postTransaction(client, { transactionId: row.id });
+        await postTransaction(client, {
+          transactionId: row.id,
+          teamId: row.team_id,
+        });
         posted++;
       } catch (error) {
         failed++;
@@ -52,13 +77,18 @@ export class LedgerAutoPostProcessor extends BaseProcessor<
       }
     }
 
-    // Finalized invoices that never reached the ledger (freed by a reversal
-    // or created since the last run).
+    // Finalized invoices that never reached the ledger (created since the
+    // last run). Reversed invoices stay out until explicitly re-posted.
     const invoices = await pool.query(
-      `SELECT id, invoice_number FROM invoices
-        WHERE status NOT IN ('draft', 'canceled', 'scheduled')
-          AND journal_entry_id IS NULL
-        ORDER BY issue_date LIMIT 100`,
+      `SELECT i.id, i.invoice_number FROM invoices i
+        WHERE i.status NOT IN ('draft', 'canceled', 'scheduled', 'refunded')
+          AND i.journal_entry_id IS NULL
+          AND NOT EXISTS (SELECT 1 FROM journal_entries je
+                           WHERE je.team_id = i.team_id
+                             AND je.source_type = 'invoice'
+                             AND je.source_id = i.id
+                             AND je.status IN ('posted', 'reversed'))
+        ORDER BY i.issue_date LIMIT 100`,
     );
     let invoicesPosted = 0;
     let invoicesFailed = 0;
@@ -79,19 +109,21 @@ export class LedgerAutoPostProcessor extends BaseProcessor<
       }
     }
 
-    this.logger.info("ledger auto-post run complete", {
-      candidates: candidates.rowCount,
-      posted,
-      failed,
-      invoicesPosted,
-      invoicesFailed,
-    });
-    return {
+    const summary = {
       candidates: candidates.rowCount,
       posted,
       failed,
       invoicesPosted,
       invoicesFailed,
     };
+    this.logger.info("ledger auto-post run complete", summary);
+    if (failed > 0 || invoicesFailed > 0) {
+      // Surface through job-health-check: per-item failures otherwise die in
+      // docker logs (successes above are already committed).
+      throw new Error(
+        `ledger-auto-post: ${failed} transactions + ${invoicesFailed} invoices failing`,
+      );
+    }
+    return summary;
   }
 }

@@ -258,6 +258,7 @@ export const registerLedgerTools: RegisterTools = (server, ctx) => {
         const result = await withClient((client) =>
           postTransaction(client, {
             transactionId: params.transactionId,
+            teamId,
             override: params.overrideAccountCode
               ? {
                   accountCode: params.overrideAccountCode,

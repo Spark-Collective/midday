@@ -256,6 +256,42 @@ describe("postTransaction", () => {
     );
   });
 
+  test("teamId mismatch refuses to post (API-key scoping)", async () => {
+    const t = await db.query(
+      `INSERT INTO transactions (team_id, date, name, amount, currency, bank_account_id, category_slug)
+       VALUES ($1, '2025-06-16', 'Scoped', -10, 'EUR', $2, 'meals') RETURNING id`,
+      [teamId, bankAccountId],
+    );
+    await expectError(
+      postTransaction(db, {
+        transactionId: t.rows[0].id,
+        teamId: "00000000-0000-0000-0000-000000000001",
+      }),
+      /not found/,
+    );
+  });
+
+  test("income override routes VAT to vat_payable, not vat_deductible", async () => {
+    const t = await db.query(
+      `INSERT INTO transactions (team_id, date, name, amount, currency, bank_account_id)
+       VALUES ($1, '2025-06-17', 'Verkoop cash', 121, 'EUR', $2) RETURNING id`,
+      [teamId, bankAccountId],
+    );
+    const res = await postTransaction(db, {
+      transactionId: t.rows[0].id,
+      override: { accountCode: "700000", vatAmount: 21 },
+    });
+    const lines = await db.query(
+      `SELECT a.system_key, ll.debit, ll.credit FROM ledger_lines ll
+         JOIN gl_accounts a ON a.id = ll.account_id
+        WHERE ll.entry_id = $1 AND a.system_key IN ('vat_payable','vat_deductible')`,
+      [res.entryId],
+    );
+    expect(lines.rows.length).toBe(1);
+    expect(lines.rows[0].system_key).toBe("vat_payable");
+    expect(Number(lines.rows[0].credit)).toBe(21);
+  });
+
   test("bookie override books an uncategorised transaction with a VAT split", async () => {
     const t = await db.query(
       `INSERT INTO transactions (team_id, date, name, amount, currency, bank_account_id)

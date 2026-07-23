@@ -1553,6 +1553,31 @@ export async function updateTransaction(
 ) {
   const { id, teamId, userId, ...dataToUpdate } = params;
 
+  // A booked transaction is ledger truth: identity fields must not drift
+  // (review 2026-07-22). Category/notes/tags remain editable — the ledger
+  // keeps the account it was booked to until reversed and re-booked.
+  if (
+    dataToUpdate.amount !== undefined ||
+    dataToUpdate.date !== undefined ||
+    dataToUpdate.currency !== undefined ||
+    dataToUpdate.bankAccountId !== undefined
+  ) {
+    const booked = await db.execute(
+      sql`SELECT 1 FROM journal_entries
+           WHERE team_id = ${teamId} AND source_type = 'transaction'
+             AND source_id = ${id} AND status IN ('posted', 'reversed')
+           LIMIT 1`,
+    );
+    const bookedRows =
+      (booked as unknown as { rows?: unknown[] }).rows ??
+      (booked as unknown as unknown[]);
+    if (bookedRows.length > 0) {
+      throw new Error(
+        "Transaction is booked in the ledger — reverse the journal entry before changing amount/date/currency/account",
+      );
+    }
+  }
+
   // If category is being changed, clear tax fields so category's tax rate is used
   if (dataToUpdate.categorySlug !== undefined) {
     dataToUpdate.taxRate = null;

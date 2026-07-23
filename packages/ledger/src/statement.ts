@@ -21,7 +21,7 @@ export const INCOME_SECTIONS: SectionDef[] = [
   {
     key: "opbrengsten",
     label: "Bedrijfsopbrengsten",
-    prefixes: ["70", "74"],
+    prefixes: ["70", "71", "72", "74"],
     direction: "credit",
   },
   {
@@ -59,7 +59,7 @@ export const INCOME_SECTIONS: SectionDef[] = [
   {
     key: "verwerking",
     label: "Resultaatverwerking",
-    prefixes: ["69", "79"],
+    prefixes: ["68", "69", "78", "79"],
     direction: "debit",
   },
 ];
@@ -69,6 +69,12 @@ export const BALANCE_SECTIONS: SectionDef[] = [
     key: "vaste_activa",
     label: "Vaste activa",
     prefixes: ["2"],
+    direction: "debit",
+  },
+  {
+    key: "voorraden",
+    label: "Voorraden en bestellingen in uitvoering",
+    prefixes: ["3"],
     direction: "debit",
   },
   {
@@ -92,7 +98,19 @@ export const BALANCE_SECTIONS: SectionDef[] = [
   {
     key: "schulden",
     label: "Schulden",
-    prefixes: ["42", "43", "44", "45", "46", "47", "48"],
+    prefixes: [
+      "16",
+      "17",
+      "42",
+      "43",
+      "44",
+      "45",
+      "46",
+      "47",
+      "48",
+      "492",
+      "493",
+    ],
     direction: "credit",
   },
 ];
@@ -229,6 +247,11 @@ export async function getStatement(
     }
   }
 
+  if (input.kind === "balance") {
+    // after the plug the sheet balances by construction; report the check
+    result.fill(0);
+  }
+
   return { kind: input.kind, periods: input.periods, sections, result };
 }
 
@@ -283,12 +306,18 @@ export async function getOverview(
   const asOf = today.startsWith(String(input.year))
     ? today
     : `${input.year}-12-31`;
-  const prevAsOf = `${input.year - 1}${asOf.slice(4)}`;
+  // leap-day safe: clamp Feb 29 to Feb 28 in the previous year
+  const prevAsOf = (() => {
+    const suffix = asOf.slice(4);
+    return suffix === "-02-29"
+      ? `${input.year - 1}-02-28`
+      : `${input.year - 1}${suffix}`;
+  })();
 
   const pnl = async (from: string, to: string) => {
     const res = await client.query(
-      `SELECT SUM(CASE WHEN a.code LIKE '7%' THEN ll.credit - ll.debit ELSE 0 END)::float8 AS revenue,
-              SUM(CASE WHEN a.code LIKE '6%' THEN ll.debit - ll.credit ELSE 0 END)::float8 AS costs
+      `SELECT SUM(CASE WHEN a.code LIKE '7%' AND a.code NOT LIKE '78%' AND a.code NOT LIKE '79%' THEN ll.credit - ll.debit ELSE 0 END)::float8 AS revenue,
+              SUM(CASE WHEN a.code LIKE '6%' AND a.code NOT LIKE '68%' AND a.code NOT LIKE '69%' THEN ll.debit - ll.credit ELSE 0 END)::float8 AS costs
          FROM ledger_lines ll
          JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
          JOIN gl_accounts a ON a.id = ll.account_id
@@ -321,6 +350,7 @@ export async function getOverview(
        JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
        JOIN gl_accounts a ON a.id = ll.account_id
       WHERE ll.team_id = $1 AND a.code LIKE '6%'
+        AND a.code NOT LIKE '68%' AND a.code NOT LIKE '69%'
         AND je.date >= $2::date AND je.date <= $3::date
       GROUP BY a.code`,
     [input.teamId, `${input.year}-01-01`, asOf],

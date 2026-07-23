@@ -22,7 +22,7 @@ export type PostInvoiceInput = {
   journalCode?: string;
 };
 
-const NON_POSTABLE = new Set(["draft", "canceled", "scheduled"]);
+const NON_POSTABLE = new Set(["draft", "canceled", "scheduled", "refunded"]);
 
 export async function postInvoice(
   client: PoolClient,
@@ -159,20 +159,30 @@ export async function postInvoice(
     });
   }
 
-  const posted = await postEntry(client, {
-    teamId: inv.team_id,
-    journalCode: input.journalCode ?? "700",
-    date: String(inv.issue_date).slice(0, 10),
-    narration:
-      `${isCreditNote ? "Credit note" : "Sales invoice"} ${inv.invoice_number ?? ""}`.trim(),
-    sourceType: "invoice",
-    sourceId: inv.id,
-    lines,
-  });
+  // One transaction covering the entry AND the invoice back-pointer: a crash
+  // between them left a permanently stuck invoice (review finding).
+  await client.query("BEGIN");
+  try {
+    const posted = await postEntry(client, {
+      teamId: inv.team_id,
+      journalCode: input.journalCode ?? "700",
+      date: String(inv.issue_date).slice(0, 10),
+      narration:
+        `${isCreditNote ? "Credit note" : "Sales invoice"} ${inv.invoice_number ?? ""}`.trim(),
+      sourceType: "invoice",
+      sourceId: inv.id,
+      manageTransaction: false,
+      lines,
+    });
 
-  await client.query(
-    `UPDATE invoices SET journal_entry_id = $2 WHERE id = $1`,
-    [inv.id, posted.entryId],
-  );
-  return posted;
+    await client.query(
+      `UPDATE invoices SET journal_entry_id = $2 WHERE id = $1`,
+      [inv.id, posted.entryId],
+    );
+    await client.query("COMMIT");
+    return posted;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
 }

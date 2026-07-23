@@ -72,10 +72,10 @@ export function transform({
       ? capitalCase(normalizedCounterparty)
       : null,
     manual: true,
-    category_slug:
-      formatAmountValue({ amount: transaction.amount, inverted }) > 0
-        ? "income"
-        : null,
+    // Review 2026-07-22: no auto 'income' — positive rows stay uncategorized
+    // for the judgment layer (auto-assign double-counted invoiced revenue
+    // when the income category was account-mapped).
+    category_slug: null,
     bank_account_id: transaction.bankAccountId,
     currency: transaction.currency.toUpperCase(),
     notified: true,

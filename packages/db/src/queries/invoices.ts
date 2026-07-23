@@ -811,6 +811,19 @@ export async function draftInvoice(
 
   const useToken = token ?? (await generateToken(id));
 
+  // A booked invoice is ledger truth: editing it would silently diverge the
+  // issued document from the posted entry (review 2026-07-22). Reverse first.
+  const booked = await db
+    .select({ journalEntryId: invoices.journalEntryId })
+    .from(invoices)
+    .where(and(eq(invoices.id, id), eq(invoices.teamId, teamId)))
+    .limit(1);
+  if (booked[0]?.journalEntryId) {
+    throw new Error(
+      "Invoice is booked in the ledger — reverse the journal entry before editing",
+    );
+  }
+
   const { paymentDetails: _, fromDetails: __, ...restTemplate } = template;
 
   const [result] = await db
@@ -989,6 +1002,8 @@ export async function deleteInvoice(db: Database, params: DeleteInvoiceParams) {
         eq(invoices.id, id),
         eq(invoices.teamId, teamId),
         and(or(eq(invoices.status, "draft"), eq(invoices.status, "canceled"))),
+        // never delete a booked invoice: the posted entry would dangle
+        isNull(invoices.journalEntryId),
       ),
     )
     .returning({
@@ -1114,6 +1129,21 @@ export async function updateInvoice(
   params: UpdateInvoiceParams,
 ) {
   const { id, teamId, userId, ...rest } = params;
+
+  if (rest.status === "canceled" || rest.status === "refunded") {
+    // The revenue of a booked invoice does not vanish on cancel/refund —
+    // require the ledger reversal first (review 2026-07-22).
+    const booked = await db
+      .select({ journalEntryId: invoices.journalEntryId })
+      .from(invoices)
+      .where(and(eq(invoices.id, id), eq(invoices.teamId, teamId)))
+      .limit(1);
+    if (booked[0]?.journalEntryId) {
+      throw new Error(
+        "Invoice is booked in the ledger — reverse the journal entry before cancel/refund",
+      );
+    }
+  }
 
   const [result] = await db
     .update(invoices)

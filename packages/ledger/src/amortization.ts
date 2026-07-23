@@ -154,44 +154,55 @@ export async function postAmortization(
     },
   ]);
 
-  const posted = await postEntry(client, {
-    teamId: input.teamId,
-    journalCode: "800",
-    date,
-    narration: `Amortization ${input.year}-${String(input.month).padStart(2, "0")}`,
-    // no sourceId: a period may legitimately get a second entry when items are
-    // registered later; per-item idempotency is amortization_lines' unique key.
-    sourceType: "depreciation",
-    lines,
-  });
+  // One transaction covering the entry AND the amortization_lines idempotency
+  // records: a crash between them re-posted the same month (review finding).
+  await client.query("BEGIN");
+  let posted: { entryId: string; entryNumber: string };
+  try {
+    posted = await postEntry(client, {
+      teamId: input.teamId,
+      journalCode: "800",
+      date,
+      narration: `Amortization ${input.year}-${String(input.month).padStart(2, "0")}`,
+      // no sourceId: a period may legitimately get a second entry when items are
+      // registered later; per-item idempotency is amortization_lines' unique key.
+      sourceType: "depreciation",
+      manageTransaction: false,
+      lines,
+    });
 
-  for (const it of due) {
-    await client.query(
-      `INSERT INTO amortization_lines (team_id, amortization_id, period_id, amount, entry_id)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [
-        input.teamId,
-        it.id,
-        periodId,
-        (it.dueCents / 100).toFixed(2),
-        posted.entryId,
-      ],
-    );
-    // completed when the whole depreciable base has been posted
-    const done = await client.query(
-      `SELECT COALESCE(SUM(amount), 0) AS posted FROM amortization_lines
-        WHERE amortization_id = $1`,
-      [it.id],
-    );
-    if (
-      cents(done.rows[0].posted) >=
-      cents(it.amount) - cents(it.residual_value)
-    ) {
+    for (const it of due) {
       await client.query(
-        `UPDATE amortizations SET status = 'completed' WHERE id = $1`,
+        `INSERT INTO amortization_lines (team_id, amortization_id, period_id, amount, entry_id)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          input.teamId,
+          it.id,
+          periodId,
+          (it.dueCents / 100).toFixed(2),
+          posted.entryId,
+        ],
+      );
+      // completed when the whole depreciable base has been posted
+      const done = await client.query(
+        `SELECT COALESCE(SUM(amount), 0) AS posted FROM amortization_lines
+          WHERE amortization_id = $1`,
         [it.id],
       );
+      if (
+        cents(done.rows[0].posted) >=
+        cents(it.amount) - cents(it.residual_value)
+      ) {
+        await client.query(
+          `UPDATE amortizations SET status = 'completed' WHERE id = $1`,
+          [it.id],
+        );
+      }
     }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
   }
   return { ...posted, items: due.length };
 }
@@ -271,17 +282,27 @@ export async function disposeAsset(
     });
   }
 
-  const posted = await postEntry(client, {
-    teamId: input.teamId,
-    journalCode: "800",
-    date: input.date,
-    narration: `Disposal ${item.name}`,
-    sourceType: "manual",
-    lines,
-  });
-  await client.query(
-    `UPDATE amortizations SET status = 'disposed' WHERE id = $1`,
-    [input.amortizationId],
-  );
-  return posted;
+  // One transaction covering the disposal entry AND the status flip: a crash
+  // between them allowed a second full disposal (review finding).
+  await client.query("BEGIN");
+  try {
+    const posted = await postEntry(client, {
+      teamId: input.teamId,
+      journalCode: "800",
+      date: input.date,
+      narration: `Disposal ${item.name}`,
+      sourceType: "manual",
+      manageTransaction: false,
+      lines,
+    });
+    await client.query(
+      `UPDATE amortizations SET status = 'disposed' WHERE id = $1`,
+      [input.amortizationId],
+    );
+    await client.query("COMMIT");
+    return posted;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
 }

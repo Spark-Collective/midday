@@ -47,9 +47,11 @@ export async function revaluePeriod(
             COALESCE(SUM(ll.debit - ll.credit), 0) AS fn_balance,
             COALESCE(SUM(ll.amount_currency), 0) AS fc_balance
        FROM gl_accounts a
-       LEFT JOIN ledger_lines ll ON ll.account_id = a.id
-       LEFT JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
-        AND je.date <= $2
+       LEFT JOIN (
+         ledger_lines ll
+         JOIN journal_entries je ON je.id = ll.entry_id
+          AND je.status IN ('posted','reversed') AND je.date <= $2
+       ) ON ll.account_id = a.id
       WHERE a.team_id = $1 AND a.currency IS NOT NULL AND a.currency <> $3
       GROUP BY a.id, a.code, a.currency`,
     [input.teamId, date, functional],
@@ -143,7 +145,8 @@ export async function closePeriod(
 
   const txns = await client.query(
     `SELECT COUNT(*)::int AS n FROM transactions t
-      WHERE t.team_id = $1 AND t.status = 'posted' AND t.date BETWEEN $2 AND $3
+      WHERE t.team_id = $1 AND t.status = 'posted' AND t.amount <> 0
+        AND t.date BETWEEN $2 AND $3
         AND NOT EXISTS (SELECT 1 FROM journal_entries je
                          WHERE je.source_type = 'transaction' AND je.source_id = t.id
                            AND je.status = 'posted')`,

@@ -22,6 +22,8 @@ import { LedgerError, type LineInput, postEntry } from "./post.js";
 
 export type PostTransactionInput = {
   transactionId: string;
+  /** When set, the transaction must belong to this team (API-key callers). */
+  teamId?: string;
   /** Judgment override (the bookie): book to this account instead of the
    *  category mapping, optionally with the VAT split the bank feed lacks. */
   override?: {
@@ -40,8 +42,9 @@ export async function postTransaction(
   const res = await client.query(
     `SELECT id, team_id, date::text AS date, name, amount, currency, bank_account_id,
             category_slug, base_amount, base_currency, tax_amount, status
-       FROM transactions WHERE id = $1`,
-    [input.transactionId],
+       FROM transactions WHERE id = $1
+        AND ($2::uuid IS NULL OR team_id = $2::uuid)`,
+    [input.transactionId, input.teamId ?? null],
   );
   if (res.rowCount === 0) {
     throw new LedgerError(`transaction ${input.transactionId} not found`);
@@ -148,13 +151,17 @@ export async function postTransaction(
   const fxRate = Math.abs(fnAbs / amount);
 
   // VAT split (from the bank feed's tax_amount, or the bookie's override).
+  // An inflow booked to a 7xx account with VAT is OUTPUT VAT: the full VAT
+  // credits vat_payable, never vat_deductible (review finding).
+  const isIncomeOverride =
+    inflow && input.override?.accountCode?.startsWith("7") === true;
   let vatFn = 0;
   let deductible = 0;
   const taxSource = input.override?.vatAmount ?? txn.tax_amount;
   if (!isTransfer && taxSource) {
     const taxAbs = Math.abs(Number(taxSource));
     vatFn = cents(taxAbs * (currency === functional ? 1 : fxRate)) / 100;
-    deductible = cents(vatFn * (vatPct / 100)) / 100;
+    deductible = isIncomeOverride ? vatFn : cents(vatFn * (vatPct / 100)) / 100;
   }
   const costFn = fnAbs - deductible; // base + non-deductible VAT (§5b.1)
   const taxBaseFn = fnAbs - vatFn;
@@ -184,11 +191,11 @@ export async function postTransaction(
   ];
   if (deductible > 0) {
     lines.push({
-      systemKey: "vat_deductible",
+      systemKey: isIncomeOverride ? "vat_payable" : "vat_deductible",
       ...counterSide(deductible),
       currency: functional,
       amountCurrency: inflow ? -deductible : deductible,
-      vatDeductiblePctUsed: vatPct,
+      ...(isIncomeOverride ? {} : { vatDeductiblePctUsed: vatPct }),
       taxBase: taxBaseFn,
       description: txn.name,
     });
