@@ -313,6 +313,70 @@ Everything is env-gated; no code changes needed. Requirements:
   flush on a 1-minute cron). Install the app per team in the dashboard, then
   link an account via the QR deep-link.
 
+## 10c. The accounting ledger (Belgian double-entry module)
+
+The fork carries a full native ledger (`packages/ledger` + migrations
+0012-0017): PCMN chart, journals (dagboeken), balanced entries with DB-level
+invariants (balance-on-post, immutability, period locks, idempotent posting),
+VAT with deductibility splits, reconciliation, amortization, FX, Belgian VAT
+return (Intervat XML), financial statements. Everything is team-scoped + RLS.
+
+### Setup order
+
+1. **Migrations 0012-0016** apply transactionally; **0017** (`ALTER TYPE ...
+   ADD VALUE`) must run OUTSIDE a transaction, standalone.
+2. **Seed** per team: `packages/ledger/src/scripts/seed-cli.ts <teamId>
+   [--chart chart.csv] [--years 2025,2026]` — journals 500/570/600/700/800/890,
+   fiscal periods, ~20 system accounts (resolved by `system_key`, never
+   hardcoded codes), 8 verified Belgian tax codes. Chart CSV columns:
+   `account_code,account_name,root_type,...` (ERPNext-style export works).
+3. **Bind bank journals**: `journals.bank_account_id` -> the Midday
+   bank_account, `journals.gl_account_id` -> the 55x/57x GL account. One
+   journal per bank account; `postTransaction` resolves the bank leg through
+   this binding.
+4. **Map categories**: `transaction_categories.gl_account_id` -> PCMN account.
+   Mapped categories auto-post (deterministic layer); unmapped stay queued for
+   a judgment agent. Leave genuinely mixed buckets unmapped on purpose.
+5. **Env**: `LEDGER_VAT_NUMBER` + `LEDGER_COMPANY_{NAME,STREET,POSTCODE,CITY,EMAIL}`
+   for the Intervat XML declarant.
+6. **Historical books**: import period-aggregated history as posted entries in
+   a dedicated journal (e.g. 899), validate cumulative balance-sheet + bounded
+   P&L per year against the official closings, then lock those periods. Mark
+   pre-ledger bank transaction rows `status='exported'` so the auto-post job
+   and the queue ignore them (their ledger truth is the history entries).
+
+### Jobs (worker, auto-registered)
+
+- `ledger-auto-post` (hourly :45): books mapped-category transactions +
+  finalized invoices. Idempotent via the partial unique index on
+  (source_type, source_id) — a reversal frees the source for re-posting.
+- `ledger-amortization` (monthly, 1st): posts the previous month per
+  registered `amortizations` row; unique(item, period) makes it idempotent.
+- `job-health-check` (hourly :05): sweeps all queues for failures -> one
+  in-app `job_failed` notification (activity_type value from 0017).
+
+### The agent glove (MCP)
+
+API-key scopes `ledger.read` / `ledger.write` expose 10 `ledger_*` MCP tools
+(unbooked queue, chart, TB, GL, open items, VAT grids; book-transaction with
+judgment override + VAT split, post-entry, reconcile, reverse). The judgment
+loop runs in an external agent session against `/mcp` — no in-platform agent.
+
+### Gotchas (all hit in production)
+
+- **Exact "Proef- & saldibalans" P&L rows net to zero as a group** via the 69x
+  allocation but are nonzero per account — an opening derived from it must
+  take balance-sheet classes only.
+- **'reversed' is not 'unbooked'**: every report/read must take
+  `status IN ('posted','reversed')` — the mirror corrects, the original stays
+  (migration 0016 fixed all views after a reversal dropped one side).
+- **Gemini embeddings cap at 100/batch** while @ai-sdk/google claims 2048 —
+  the chat tool-index warm-up dies without the chunking wrapper in
+  `apps/api/src/chat/tools.ts` (killed every bot message).
+- **The income statement excludes 69/79 from its result line** — processed
+  years would otherwise show zero.
+- Statement/overview charts are plain divs — no chart dependency.
+
 ## 11. Worker jobs (BullMQ) cheat-sheet
 
 Upstream ran background work on Trigger.dev; this fork runs BullMQ in the worker.
