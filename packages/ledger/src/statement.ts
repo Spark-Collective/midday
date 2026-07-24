@@ -374,10 +374,14 @@ export async function getOverview(
     .filter((g) => g.amount !== 0)
     .sort((a, b) => b.amount - a.amount);
 
+  // GROSS accruals, not net: the quarterly return transfer clears these
+  // accounts within the same quarter, so net movement is ~0 for any processed
+  // year (the 2025 history showed empty bars). Gross debits/credits measure
+  // "VAT accrued this quarter" regardless of settlement.
   const vat = await client.query(
     `SELECT EXTRACT(QUARTER FROM je.date)::int AS q,
-            SUM(CASE WHEN a.system_key = 'vat_deductible' THEN ll.debit - ll.credit ELSE 0 END)::float8 AS deductible,
-            SUM(CASE WHEN a.system_key = 'vat_payable' THEN ll.credit - ll.debit ELSE 0 END)::float8 AS payable
+            SUM(CASE WHEN a.system_key = 'vat_deductible' THEN ll.debit ELSE 0 END)::float8 AS deductible,
+            SUM(CASE WHEN a.system_key = 'vat_payable' THEN ll.credit ELSE 0 END)::float8 AS payable
        FROM ledger_lines ll
        JOIN journal_entries je ON je.id = ll.entry_id AND je.status IN ('posted','reversed')
        JOIN gl_accounts a ON a.id = ll.account_id
