@@ -47,7 +47,35 @@ const lineSchema = z.object({
   debit: z.coerce.number().optional(),
   credit: z.coerce.number().optional(),
   description: z.string().optional(),
+  taxCode: z
+    .string()
+    .optional()
+    .describe("Tax code (e.g. P21, P21-ICS) — feeds the VAT-return grids"),
+  taxBase: z.coerce
+    .number()
+    .optional()
+    .describe("VAT base amount for this tax line"),
 });
+
+/** Resolve lineSchema taxCode strings to tax_codes ids for postEntry. */
+async function resolveTaxCodes(
+  client: PoolClient,
+  teamId: string,
+  lines: Array<z.infer<typeof lineSchema>>,
+) {
+  const codes = [...new Set(lines.flatMap((l) => (l.taxCode ? [l.taxCode] : [])))];
+  if (codes.length === 0) return new Map<string, string>();
+  const res = await client.query(
+    `SELECT code, id FROM tax_codes WHERE team_id = $1 AND code = ANY($2)`,
+    [teamId, codes],
+  );
+  const map = new Map<string, string>(res.rows.map((r) => [r.code, r.id]));
+  const missing = codes.filter((c) => !map.has(c));
+  if (missing.length > 0) {
+    throw new Error(`Unknown tax code(s): ${missing.join(", ")}`);
+  }
+  return map;
+}
 
 export const registerLedgerTools: RegisterTools = (server, ctx) => {
   const { teamId } = ctx;
@@ -296,16 +324,20 @@ export const registerLedgerTools: RegisterTools = (server, ctx) => {
         annotations: WRITE_ANNOTATIONS,
       },
       withErrorHandling(async (params) => {
-        const result = await withClient((client) =>
-          postEntry(client, {
+        const result = await withClient(async (client) => {
+          const taxIds = await resolveTaxCodes(client, teamId, params.lines);
+          return postEntry(client, {
             teamId,
             journalCode: params.journalCode,
             date: params.date,
             narration: params.narration,
             sourceType: "manual",
-            lines: params.lines,
-          }),
-        );
+            lines: params.lines.map(({ taxCode, ...l }) => ({
+              ...l,
+              taxCodeId: taxCode ? taxIds.get(taxCode) : undefined,
+            })),
+          });
+        });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,
