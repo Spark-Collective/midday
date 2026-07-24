@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@midday/ui/button";
+import { Sheet, SheetContent, SheetHeader } from "@midday/ui/sheet";
 import {
   Table,
   TableBody,
@@ -475,11 +476,183 @@ function TrialBalanceTab() {
   );
 }
 
+function EntrySheet({
+  entryId,
+  onClose,
+}: {
+  entryId: string | null;
+  onClose: () => void;
+}) {
+  const trpc = useTRPC();
+  const { data, isLoading } = useQuery({
+    ...trpc.ledger.entry.queryOptions({ entryId: entryId ?? "" }),
+    enabled: Boolean(entryId),
+  });
+  const fileUrl = (path: string[] | null | undefined) =>
+    path?.length
+      ? `${process.env.NEXT_PUBLIC_API_URL}/files/proxy?filePath=vault/${path.join("/")}`
+      : null;
+
+  return (
+    <Sheet open={Boolean(entryId)} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        {isLoading || !data ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="space-y-6">
+            <SheetHeader>
+              <div>
+                <p className="font-mono text-lg">
+                  {data.entryNumber ?? "(draft)"}
+                  <span className="ml-3 text-sm text-muted-foreground">
+                    journal {data.journalCode} · {data.date}
+                  </span>
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {data.narration}
+                </p>
+                {data.status === "reversed" && (
+                  <p className="mt-1 text-xs text-destructive">
+                    Reversed — corrected by a mirror entry.
+                  </p>
+                )}
+                {data.reversesEntryId && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This entry reverses another entry.
+                  </p>
+                )}
+              </div>
+            </SheetHeader>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead className="text-right">Debit</TableHead>
+                  <TableHead className="text-right">Credit</TableHead>
+                  <TableHead className="w-40">VAT</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.lines.map((l, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <span className="font-mono text-xs">{l.accountCode}</span>
+                      <span className="ml-2 text-sm">{l.accountName}</span>
+                      {l.description && (
+                        <p className="text-xs text-muted-foreground">
+                          {l.description}
+                        </p>
+                      )}
+                      {l.reconciled && (
+                        <p className="text-xs text-muted-foreground">
+                          ✓ reconciled
+                        </p>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right align-top">
+                      <Amount value={l.debit} />
+                    </TableCell>
+                    <TableCell className="text-right align-top">
+                      <Amount value={l.credit} />
+                    </TableCell>
+                    <TableCell className="align-top text-xs text-muted-foreground">
+                      {l.taxCode || l.taxBase != null ? (
+                        <>
+                          {l.taxCode && (
+                            <span className="font-mono">{l.taxCode}</span>
+                          )}
+                          {l.taxBase != null && (
+                            <p>base {eur.format(l.taxBase)}</p>
+                          )}
+                          {l.vatDeductiblePctUsed != null && (
+                            <p>{l.vatDeductiblePctUsed}% deductible</p>
+                          )}
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {data.source?.kind === "invoice" && (
+              <div className="border p-4">
+                <p className="text-sm font-medium">
+                  Invoice {data.source.invoiceNumber}
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {data.source.customerName}
+                  </span>
+                  {data.source.amount != null && (
+                    <span className="ml-2 font-mono">
+                      {eur.format(data.source.amount)}
+                    </span>
+                  )}
+                </p>
+                {fileUrl(data.source.filePath) && (
+                  <a
+                    className="mt-2 inline-block text-sm underline"
+                    href={fileUrl(data.source.filePath) ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open invoice PDF
+                  </a>
+                )}
+              </div>
+            )}
+            {data.source?.kind === "transaction" && (
+              <div className="border p-4">
+                <p className="text-sm font-medium">
+                  Bank transaction
+                  <span className="ml-2 font-normal text-muted-foreground">
+                    {data.source.date} · {data.source.name}
+                  </span>
+                  <span className="ml-2 font-mono">
+                    {data.source.amount} {data.source.currency}
+                  </span>
+                </p>
+                {data.source.attachments.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {data.source.attachments.map((a, i) => (
+                      <a
+                        key={i}
+                        className="block text-sm underline"
+                        href={fileUrl(a.path) ?? "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {a.name ?? "Receipt"}
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No receipt attached yet.
+                  </p>
+                )}
+              </div>
+            )}
+            {!data.source && data.sourceType && (
+              <p className="text-xs text-muted-foreground">
+                Source: {data.sourceType}
+              </p>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 function GeneralLedgerTab({ preset }: { preset: GlPreset | null }) {
   const trpc = useTRPC();
   const [accountCode, setAccountCode] = useState(preset?.accountCode ?? "");
   const [from, setFrom] = useState(preset?.from ?? "");
   const [to, setTo] = useState(preset?.to ?? "");
+  const [entryId, setEntryId] = useState<string | null>(null);
   const { data, isLoading } = useQuery(
     trpc.ledger.generalLedger.queryOptions({
       accountCode: accountCode || undefined,
@@ -529,7 +702,12 @@ function GeneralLedgerTab({ preset }: { preset: GlPreset | null }) {
           </TableHeader>
           <TableBody>
             {data.map((r, i) => (
-              <TableRow key={`${r.entryId}-${r.accountCode}-${i}`}>
+              <TableRow
+                key={`${r.entryId}-${r.accountCode}-${i}`}
+                className="cursor-pointer hover:bg-muted/30"
+                title="Open entry detail"
+                onClick={() => setEntryId(r.entryId)}
+              >
                 <TableCell>{r.date}</TableCell>
                 <TableCell className="font-mono">
                   {r.entryNumber ?? "—"}
@@ -551,6 +729,7 @@ function GeneralLedgerTab({ preset }: { preset: GlPreset | null }) {
           </TableBody>
         </Table>
       )}
+      <EntrySheet entryId={entryId} onClose={() => setEntryId(null)} />
     </div>
   );
 }

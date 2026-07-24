@@ -12,6 +12,12 @@ export {
   revaluePeriod,
 } from "./close.js";
 export {
+  type EntryDetail,
+  type EntryLine,
+  type EntrySource,
+  getEntry,
+} from "./entry.js";
+export {
   type BuildOpeningInput,
   buildOpeningLines,
   type OpenItem,

@@ -4,6 +4,7 @@ import {
   closePeriod,
   computeVatGrids,
   generateVatReturn,
+  getEntry,
   getGeneralLedger,
   getOpenItems,
   getOverview,
@@ -118,6 +119,13 @@ export const ledgerRouter = createTRPCRouter({
         warnings: result.warnings,
         filename: `intervat-${input.year}-Q${input.quarter}.xml`,
       };
+    }),
+
+  // Single-entry drill-through: all lines with VAT detail + source document.
+  entry: protectedProcedure
+    .input(z.object({ entryId: z.string().uuid() }))
+    .query(async ({ ctx: { teamId }, input }) => {
+      return getEntry(ledgerDb(), { teamId: teamId!, entryId: input.entryId });
     }),
 
   // Grouped financial statements (M7): resultatenrekening + balans, with an
