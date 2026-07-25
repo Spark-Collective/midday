@@ -41,6 +41,18 @@ export class LedgerAutoPostProcessor extends BaseProcessor<
         WHERE t.status = 'posted' AND t.amount <> 0
           AND t.date >= $1::date
           AND (tc.gl_account_id IS NOT NULL OR t.category_slug = 'transfer')
+          -- spark: COSTS wait for a supporting document. Booking an expense from
+          -- the bank feed alone guesses the account/VAT (the invoice carries the
+          -- real treatment), so hold expense-account transactions until a receipt
+          -- is attached or a matched inbox item exists. Income, transfers, and
+          -- asset/liability movements still auto-post (no purchase invoice due).
+          AND (
+            NOT EXISTS (SELECT 1 FROM gl_accounts gl
+                         WHERE gl.id = tc.gl_account_id AND gl.type = 'expense')
+            OR EXISTS (SELECT 1 FROM transaction_attachments ta
+                        WHERE ta.transaction_id = t.id AND ta.team_id = t.team_id)
+            OR EXISTS (SELECT 1 FROM inbox ib WHERE ib.transaction_id = t.id)
+          )
           AND NOT EXISTS (SELECT 1 FROM journal_entries je
                            WHERE je.team_id = t.team_id
                              AND je.source_type = 'transaction'
