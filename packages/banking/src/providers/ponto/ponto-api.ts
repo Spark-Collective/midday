@@ -128,7 +128,15 @@ export class PontoApi {
   /** Write the rotated refresh token back to bank_connections (PostgREST). */
   async #persistRotatedToken(oldToken: string, newToken: string): Promise<void> {
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    // The codebase convention is SUPABASE_SECRET_KEY (that is what ships in the
+    // container env). The SERVICE_KEY/SERVICE_ROLE_KEY names were wrong: neither
+    // is set, so persist silently returned early and the rotating Ory refresh
+    // token was never written back, orphaning it on first rotation and killing
+    // the sync. Read SECRET_KEY first, keep the old names as fallbacks.
+    const serviceKey =
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!supabaseUrl || !serviceKey) {
       logger.error("ponto: cannot persist rotated refresh token (missing Supabase env)");
       return;
