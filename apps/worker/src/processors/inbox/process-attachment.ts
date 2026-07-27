@@ -312,8 +312,11 @@ export class ProcessAttachmentProcessor extends BaseProcessor<ProcessAttachmentP
         duration: `${docProcessingDuration}ms`,
       });
 
-      // Check if document is classified as "other" (non-financial document)
-      if (result.document_type === "other") {
+      // Check if document is classified as "other" (non-financial document).
+      // An extracted amount overrides that classification: the quality pass
+      // downgrades imperfect invoices (e.g. Acerta's beheerskosten layout) to
+      // "other" even when type=invoice and an amount was found.
+      if (result.document_type === "other" && !result.amount) {
         await updateInboxWithProcessedData(db, {
           id: inboxData.id,
           displayName: result.name ?? inboxData.displayName ?? undefined,
