@@ -379,7 +379,12 @@ export class GmailProvider implements OAuthProviderInterface {
     }
 
     try {
-      const query = `-from:me has:attachment filename:pdf ${dateFilter}`;
+      // spark: `in:anywhere` so SPAM is searched too. Gmail excludes spam/trash
+      // from a default search, and forwarded supplier invoices (external sender
+      // -> group -> mailbox breaks SPF/DKIM) get false-positived into Spam
+      // regularly — an invoice was silently never imported that way. Trash stays
+      // excluded: deleting a mail is a deliberate "ignore this" signal.
+      const query = `-from:me has:attachment filename:pdf in:anywhere -in:trash ${dateFilter}`;
 
       // Fetch messages with pagination to handle high-volume days
       const allMessages: gmail_v1.Schema$Message[] = [];
