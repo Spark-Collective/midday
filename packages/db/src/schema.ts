@@ -4717,3 +4717,177 @@ export const ledgerLinesRelations = relations(ledgerLines, ({ one }) => ({
     references: [glAccounts.id],
   }),
 }));
+
+// ---------------------------------------------------------------------------
+// Compliance layer (migration 0039): filings, directors, tax parameters.
+// Design: docs/architecture/midday-compliance-workflows-2026-08-02.md
+// ---------------------------------------------------------------------------
+
+export const filingKindEnum = pgEnum("filing_kind", [
+  "vat_return",
+  "client_listing",
+  "ic_statement",
+  "annual_accounts",
+  "corporate_tax",
+  "personal_tax",
+  "social_contribution",
+  "advance_payment",
+]);
+
+export const filingStatusEnum = pgEnum("filing_status", [
+  "not_started",
+  "in_progress",
+  "ready_for_review",
+  "filed",
+  "confirmed",
+  "skipped",
+]);
+
+export const directors = pgTable(
+  "directors",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    name: text().notNull(),
+    // Rijksregisternummer. Never render in full; encryption at rest is a C4 decision.
+    nationalNumber: text("national_number"),
+    socialInsuranceFund: text("social_insurance_fund"),
+    fundClientNumber: text("fund_client_number"),
+    status: text(),
+    // This director's own current account (R/C). Never shared between directors.
+    glAccountId: uuid("gl_account_id").references(() => glAccounts.id),
+    remunerationMonthly: numericCasted("remuneration_monthly", {
+      precision: 10,
+      scale: 2,
+    }),
+    withholdingPct: numericCasted("withholding_pct", {
+      precision: 5,
+      scale: 2,
+    }),
+    maritalStatus: text("marital_status"),
+    dependentChildren: integer("dependent_children").default(0).notNull(),
+    municipality: text(),
+    active: boolean().default(true).notNull(),
+    startedOn: date("started_on"),
+    endedOn: date("ended_on"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("directors_team_name_unique").on(table.teamId, table.name),
+    unique("directors_gl_account_unique").on(table.glAccountId),
+    index("directors_team_idx").on(table.teamId),
+    pgPolicy("Team members can manage directors", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)`,
+    }),
+  ],
+);
+
+export const filings = pgTable(
+  "filings",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    // null for company filings; set for personal_tax (one per director per year)
+    directorId: uuid("director_id").references(() => directors.id, {
+      onDelete: "cascade",
+    }),
+    kind: filingKindEnum().notNull(),
+    periodYear: integer("period_year").notNull(),
+    periodKey: text("period_key").notNull(),
+    dueDate: date("due_date").notNull(),
+    status: filingStatusEnum().default("not_started").notNull(),
+    steps: jsonb().default([]).notNull(),
+    data: jsonb(),
+    artifacts: jsonb().default([]).notNull(),
+    entryId: uuid("entry_id").references(() => journalEntries.id),
+    externalRef: text("external_ref"),
+    filedAt: timestamp("filed_at", { withTimezone: true, mode: "string" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("filings_team_due_idx").on(table.teamId, table.dueDate),
+    pgPolicy("Team members can manage filings", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)`,
+    }),
+  ],
+);
+
+export const directorItems = pgTable(
+  "director_items",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    directorId: uuid("director_id")
+      .notNull()
+      .references(() => directors.id, { onDelete: "cascade" }),
+    year: integer().notNull(),
+    kind: text().notNull(),
+    amount: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    paidOn: date("paid_on"),
+    note: text(),
+    documentId: uuid("document_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("director_items_lookup_idx").on(
+      table.teamId,
+      table.directorId,
+      table.year,
+    ),
+    pgPolicy("Team members can manage director items", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)`,
+    }),
+  ],
+);
+
+// Global reference data (not team-scoped): rates, thresholds, coefficients.
+export const taxParameters = pgTable(
+  "tax_parameters",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    year: integer().notNull(),
+    key: text().notNull(),
+    value: numericCasted({ precision: 14, scale: 4 }).notNull(),
+    unit: text(),
+    sourceUrl: text("source_url"),
+    verifiedOn: date("verified_on"),
+    verifiedBy: text("verified_by"),
+    note: text(),
+  },
+  (table) => [
+    unique("tax_parameters_year_key_unique").on(table.year, table.key),
+    pgPolicy("Anyone can read tax parameters", {
+      as: "permissive",
+      for: "select",
+      to: ["public"],
+      using: sql`true`,
+    }),
+  ],
+);

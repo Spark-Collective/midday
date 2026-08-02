@@ -12,6 +12,21 @@ export {
   revaluePeriod,
 } from "./close.js";
 export {
+  type CompanyProfile,
+  computeDueDate,
+  DEFAULT_PROFILE,
+  FILING_TEMPLATES,
+  type FilingKind,
+  type FilingRow,
+  type FilingStatus,
+  type FilingStep,
+  generateFilings,
+  listFilings,
+  markFiled,
+  setFilingData,
+  setStep,
+} from "./filings.js";
+export {
   type EntryDetail,
   type EntryLine,
   type EntrySource,
@@ -85,3 +100,16 @@ export {
   type XbrlInput,
   type XbrlResult,
 } from "./annual-accounts-xbrl.js";
+
+export {
+  type TaxParameter,
+  getTaxParameter,
+  listTaxParameters,
+  SEED_PARAMETERS,
+  seedTaxParameters,
+} from "./tax-params.js";
+export {
+  buildJustifications,
+  checkVatProbabilityRules,
+  type VatWarning,
+} from "./vat-checks.js";

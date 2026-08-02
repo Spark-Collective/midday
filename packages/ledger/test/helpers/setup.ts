@@ -44,22 +44,31 @@ const M16 = readFileSync(
   "utf8",
 );
 
+const M39 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0039_compliance_workflows.sql"),
+  "utf8",
+);
+
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
   DROP VIEW IF EXISTS v_general_ledger;
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
-  DROP TABLE IF EXISTS amortization_lines, amortizations,
+  DROP TABLE IF EXISTS filings, director_items, directors, tax_parameters,
+    amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
     tax_codes, ledger_lines, journal_entries, fiscal_periods, journals,
     gl_accounts, invoices, transactions, transaction_categories, bank_accounts CASCADE;
-  DROP TYPE IF EXISTS gl_account_type, journal_type, fiscal_period_status,
+  DROP TYPE IF EXISTS filing_kind, filing_status, gl_account_type, journal_type, fiscal_period_status,
     journal_entry_status, journal_entry_source, ledger_party_type, tax_kind,
     invoice_type, amortization_kind CASCADE;
   CREATE SCHEMA IF NOT EXISTS private;
   CREATE OR REPLACE FUNCTION private.get_teams_for_authenticated_user()
     RETURNS SETOF uuid LANGUAGE sql
     AS $$ SELECT '00000000-0000-0000-0000-000000000000'::uuid LIMIT 0 $$;
+  CREATE TABLE IF NOT EXISTS users (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid()
+  );
   CREATE TABLE IF NOT EXISTS teams (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), base_currency text
   );
@@ -99,6 +108,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M14);
   await db.query(M15);
   await db.query(M16);
+  await db.query(M39);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );
