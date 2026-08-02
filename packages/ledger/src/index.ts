@@ -6,11 +6,29 @@ export {
   scheduleAmountCents,
 } from "./amortization.js";
 export {
+  type AnnualAccounts,
+  getAnnualAccounts,
+  type Rubriek,
+} from "./annual-accounts.js";
+export {
+  buildAnnualAccountsXbrl,
+  checkLegalControls,
+  LEGAL_CONTROLS,
+  type XbrlInput,
+  type XbrlResult,
+} from "./annual-accounts-xbrl.js";
+export {
   type CloseReport,
   closePeriod,
   type RevaluationResult,
   revaluePeriod,
 } from "./close.js";
+export {
+  type EntryDetail,
+  type EntryLine,
+  type EntrySource,
+  getEntry,
+} from "./entry.js";
 export {
   type CompanyProfile,
   computeDueDate,
@@ -27,18 +45,20 @@ export {
   setStep,
 } from "./filings.js";
 export {
-  type EntryDetail,
-  type EntryLine,
-  type EntrySource,
-  getEntry,
-} from "./entry.js";
-export {
   type BuildOpeningInput,
   buildOpeningLines,
   type OpenItem,
   postOpening,
   type TbRow,
 } from "./opening.js";
+export {
+  DIRECTOR_ACCOUNT_KEYS,
+  type DirectorRow,
+  getOwnerSummary,
+  linkDirectorAccounts,
+  listDirectors,
+  type OwnerSummary,
+} from "./owner.js";
 export type { LedgerDb } from "./post.js";
 export {
   LedgerError,
@@ -85,6 +105,18 @@ export {
   type StatementSection,
 } from "./statement.js";
 export {
+  getTaxParameter,
+  listTaxParameters,
+  SEED_PARAMETERS,
+  seedTaxParameters,
+  type TaxParameter,
+} from "./tax-params.js";
+export {
+  buildJustifications,
+  checkVatProbabilityRules,
+  type VatWarning,
+} from "./vat-checks.js";
+export {
   buildVatConsignmentXml,
   computeVatGrids,
   generateVatReturn,
@@ -92,24 +124,3 @@ export {
   type VatPeriod,
   type VatReturnResult,
 } from "./vat-return.js";
-export { getAnnualAccounts, type AnnualAccounts, type Rubriek } from "./annual-accounts.js";
-export {
-  buildAnnualAccountsXbrl,
-  checkLegalControls,
-  LEGAL_CONTROLS,
-  type XbrlInput,
-  type XbrlResult,
-} from "./annual-accounts-xbrl.js";
-
-export {
-  type TaxParameter,
-  getTaxParameter,
-  listTaxParameters,
-  SEED_PARAMETERS,
-  seedTaxParameters,
-} from "./tax-params.js";
-export {
-  buildJustifications,
-  checkVatProbabilityRules,
-  type VatWarning,
-} from "./vat-checks.js";
