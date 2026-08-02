@@ -771,6 +771,94 @@ function OpenItemsTab() {
   );
 }
 
+/**
+ * Jaarrekening: the NBB micro-model rubrieken as they will be filed, with the
+ * Balanscentrale arithmetic controls shown up front. Read-only by design —
+ * the deposit itself happens on filing.cbso.nbb.be.
+ */
+function AnnualAccountsTab() {
+  const now = new Date().getFullYear();
+  const [year, setYear] = useState(now - 1);
+  const trpc = useTRPC();
+  const { data, isLoading } = useQuery(
+    trpc.ledger.annualAccounts.queryOptions({ year, compareYear: year - 1 }),
+  );
+  if (isLoading || !data)
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  const failed = data.checks.filter((c) => !c.ok);
+
+  const section = (
+    title: string,
+    rows: Array<{ code: string; label: string; values: number[] }>,
+  ) => (
+    <div className="border">
+      <p className="border-b bg-muted/30 px-3 py-2 text-sm font-medium">
+        {title}
+      </p>
+      <Table>
+        <TableBody>
+          {rows
+            .filter((r) => r.values.some((v) => v !== 0))
+            .map((r) => {
+              const total = /^(20\/58|10\/49|10\/15|17\/49|21\/28|29\/58|99)/.test(
+                r.code,
+              );
+              return (
+                <TableRow key={r.code} className={total ? "font-medium" : ""}>
+                  <TableCell className="w-20 font-mono text-xs text-muted-foreground">
+                    {r.code}
+                  </TableCell>
+                  <TableCell>{r.label}</TableCell>
+                  {r.values.map((v, i) => (
+                    <TableCell key={i} className="w-36 text-right">
+                      <Amount value={v} />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <YearSelect value={year} onChange={(y) => setYear(y ?? year)} />
+        <span className="text-xs text-muted-foreground">
+          micromodel m87-f · kolommen: {data.years.join(" / ")}
+        </span>
+      </div>
+
+      <div
+        className={`border p-3 text-sm ${failed.length ? "border-destructive text-destructive" : "bg-muted/20"}`}
+      >
+        {failed.length === 0 ? (
+          <span>
+            Alle {data.checks.length} rekenkundige controles OK — klaar voor
+            neerlegging via filing.cbso.nbb.be.
+          </span>
+        ) : (
+          <ul className="space-y-1">
+            {failed.map((c) => (
+              <li key={c.name}>
+                {c.name}: {c.detail}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {section("Balans — Activa", data.balans.activa)}
+      {section("Balans — Passiva", data.balans.passiva)}
+      {section("Resultatenrekening (micro)", data.resultatenrekening)}
+      {section("Resultaatverwerking", data.resultaatverwerking)}
+    </div>
+  );
+}
+
 function PeriodsTab() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -983,6 +1071,7 @@ export function AccountingContent() {
           <TabsTrigger value="income">Resultatenrekening</TabsTrigger>
           <TabsTrigger value="balance">Balans</TabsTrigger>
           <TabsTrigger value="vat">VAT return</TabsTrigger>
+          <TabsTrigger value="annual">Jaarrekening</TabsTrigger>
           <TabsTrigger value="periods">Periods</TabsTrigger>
           <TabsTrigger value="trial-balance">Trial balance</TabsTrigger>
           <TabsTrigger value="general-ledger">General ledger</TabsTrigger>
@@ -999,6 +1088,9 @@ export function AccountingContent() {
         </TabsContent>
         <TabsContent value="vat">
           <VatReturnTab />
+        </TabsContent>
+        <TabsContent value="annual">
+          <AnnualAccountsTab />
         </TabsContent>
         <TabsContent value="periods">
           <PeriodsTab />

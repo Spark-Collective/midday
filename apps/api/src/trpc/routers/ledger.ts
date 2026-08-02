@@ -4,6 +4,7 @@ import {
   closePeriod,
   computeVatGrids,
   generateVatReturn,
+  getAnnualAccounts,
   getEntry,
   getGeneralLedger,
   getOpenItems,
@@ -119,6 +120,23 @@ export const ledgerRouter = createTRPCRouter({
         warnings: result.warnings,
         filename: `intervat-${input.year}-Q${input.quarter}.xml`,
       };
+    }),
+
+  // NBB micro-model annual accounts (m87-f rubrieken) with the Balanscentrale
+  // arithmetic controls. Filing itself stays a human act on filing.cbso.nbb.be.
+  annualAccounts: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2000).max(2100),
+        compareYear: z.number().int().min(2000).max(2100).optional(),
+      }),
+    )
+    .query(async ({ ctx: { teamId }, input }) => {
+      return getAnnualAccounts(ledgerDb(), {
+        teamId: teamId!,
+        year: input.year,
+        compareYear: input.compareYear,
+      });
     }),
 
   // Single-entry drill-through: all lines with VAT detail + source document.

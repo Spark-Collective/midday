@@ -77,3 +77,4 @@ export {
   type VatPeriod,
   type VatReturnResult,
 } from "./vat-return.js";
+export { getAnnualAccounts, type AnnualAccounts, type Rubriek } from "./annual-accounts.js";
