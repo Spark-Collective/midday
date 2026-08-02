@@ -15,6 +15,13 @@ const DynamicPdfViewer = dynamic(
   { loading: () => <Skeleton className="h-full w-full" /> },
 );
 
+// spark: Peppol/UBL e-invoices arrive as XML, not PDF — render them readably
+// instead of falling through to a generic file icon.
+const DynamicUblViewer = dynamic(
+  () => import("@/components/ubl-viewer").then((mod) => mod.UblViewer),
+  { loading: () => <Skeleton className="h-full w-full" /> },
+);
+
 type Props = {
   mimeType: string | null;
   url: string;
@@ -54,6 +61,10 @@ export function FileViewer({ mimeType, url, maxWidth }: Props) {
 
   if (mimeType?.startsWith("image/")) {
     return <DynamicImageViewer url={displayUrl} key={displayUrl} />;
+  }
+
+  if (mimeType === "application/xml" || mimeType === "text/xml") {
+    return <DynamicUblViewer url={displayUrl} key={displayUrl} />;
   }
 
   return (
