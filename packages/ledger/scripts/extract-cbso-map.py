@@ -102,7 +102,66 @@ def axis_info(nodes):
     return part, concept
 
 
-def parse_lab(path, nodes):
+def parse_definition(path):
+    """metric -> {dimension: set(members)} from the section's hypercubes.
+
+    A row's table linkbase often omits the metric (only 9 of 52 rows declare
+    one in the passiva table), so the authoritative source is the definition
+    linkbase: `all` arcs bind a primary item (met:amN) to a hypercube, and the
+    hypercube's dimension-domain arcs enumerate the members it admits.
+    """
+    if not os.path.exists(path):
+        return {}
+    root = ET.parse(path).getroot()
+    out = {}
+    for dl in root.iter(f"{{{NS['link']}}}definitionLink"):
+        locs = {}  # xlink:label -> local name of the target
+        for loc in dl.findall(f"{{{NS['link']}}}loc"):
+            href = loc.get(f"{XL}href", "")
+            if "#" in href:
+                locs[loc.get(f"{XL}label")] = href.split("#", 1)[1]
+        metrics, dims = set(), {}
+        cur_dim = None
+        for arc in dl.findall(f"{{{NS['link']}}}definitionArc"):
+            role = arc.get(f"{XL}arcrole", "")
+            frm = locs.get(arc.get(f"{XL}from"), "")
+            to = locs.get(arc.get(f"{XL}to"), "")
+            if role.endswith("/all") and frm.startswith("met_"):
+                metrics.add(frm.replace("_", ":", 1))
+            elif role.endswith("/hypercube-dimension"):
+                cur_dim = to.replace("_", ":", 1)
+                dims.setdefault(cur_dim, set())
+            elif role.endswith("/dimension-domain"):
+                cur_dim = frm.replace("_", ":", 1)
+                dims.setdefault(cur_dim, set()).add(to.replace("_", ":", 1))
+        # One definitionLink is one hypercube: a fact must satisfy a SINGLE
+        # hypercube completely, so they are kept separate (merging them would
+        # accept dimension mixes the taxonomy rejects).
+        for met in metrics:
+            out.setdefault(met, []).append(dims)
+    return out
+
+
+def fits(cube, dims):
+    """True when a hypercube admits every (dimension, member) a row supplies.
+    Dimensions the cube declares but the row omits may be defaulted, and
+    dimension defaults live in the schema rather than here, so this is a
+    subset test: good enough to PICK the metric, not a substitute for
+    validating the finished instance with a real XBRL processor."""
+    return all(
+        d in cube and (not cube[d] or m in cube[d]) for d, m in dims.items()
+    )
+
+
+def metric_for(defs, dims):
+    """Pick the metric with a hypercube that exactly admits these dimensions."""
+    for met, cubes in defs.items():
+        if any(fits(cube, dims) for cube in cubes):
+            return met
+    return None
+
+
+def parse_lab(path, nodes, defs=None):
     """rubriek code -> (concept, dims), plus the English label."""
     root = ET.parse(path).getroot()
     # locator label -> rule node id
@@ -138,9 +197,14 @@ def parse_lab(path, nodes):
         concept, dims = resolve(nodes, node_id)
         # Balance-sheet tables declare the metric on the period axis instead of
         # on the row; fall back to it before giving up on the row.
-        concept = concept or axis_concept
+        concept = concept or axis_concept or metric_for(defs or {}, dims)
         if not concept:
             continue  # a pure header row, no datapoint
+        # Verify the (metric, dimensions) pair against the section hypercubes.
+        # A pair the taxonomy does not admit would be rejected as
+        # xbrldie:PrimaryItemDimensionallyInvalidError at filing time, so it is
+        # recorded as unverified rather than silently emitted.
+
         dims.pop("dim:prd", None)  # the period is a per-column context aspect
         # dim:part sits on the period axis in most tables but on the row in the
         # appropriation section (s.05); the row wins when it declares one.
@@ -160,7 +224,10 @@ def sections_for_model(root_dir, model):
     refs = set()
     if os.path.exists(pres):
         text = open(pres, encoding="utf-8").read()
-        for m in re.finditer(r'(s\.\d+\.\d+\.\d+(?:\.[a-z]+)?)[-.]', text):
+        # Several model variants share a section number (s.04.00.0.ab, .cd,
+        # .ef, ...) with DIFFERENT dimension members. Only the exact tables the
+        # entry point references are valid for this model.
+        for m in re.finditer(r"(s\.[0-9.]+[a-z]*)-rend\.xml", text):
             refs.add(m.group(1))
     return sorted(refs)
 
@@ -174,13 +241,14 @@ def main():
         if not fn.endswith("-lab.xml"):
             continue
         base = fn[: -len("-lab.xml")]
-        if wanted and not any(base.startswith(w) for w in wanted):
+        if wanted and base not in wanted:
             continue
         rend = os.path.join(sect_dir, f"{base}-rend.xml")
         if not os.path.exists(rend):
             continue
         nodes = parse_rend(rend)
-        found = parse_lab(os.path.join(sect_dir, fn), nodes)
+        defs = parse_definition(os.path.join(sect_dir, f"{base}-definition.xml"))
+        found = parse_lab(os.path.join(sect_dir, fn), nodes, defs)
         if found:
             per_section[base] = sorted(found)
             for code, dp in found.items():

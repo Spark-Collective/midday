@@ -854,7 +854,7 @@ function AnnualAccountsTab() {
           disabled={failed.length > 0}
           onClick={downloadXbrl}
         >
-          Download XBRL
+          Download XBRL (concept)
         </Button>
       </div>
 
@@ -863,8 +863,11 @@ function AnnualAccountsTab() {
       >
         {failed.length === 0 ? (
           <span>
-            Alle {data.checks.length} wettelijke controles OK. Download het
-            XBRL-bestand en leg neer via filing.cbso.nbb.be (itsme/eID).
+            Alle {data.checks.length} wettelijke controles OK. De cijfers zijn
+            neerleggingsklaar; het XBRL-bestand is nog een concept (sectie 1
+            identificatie ontbreekt en 6 eigen-vermogenrubrieken hebben nog een
+            verkeerde dimensiecombinatie). Valideer met Arelle voor je neerlegt
+            via filing.cbso.nbb.be.
           </span>
         ) : (
           <ul className="space-y-1">

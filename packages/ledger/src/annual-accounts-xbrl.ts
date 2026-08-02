@@ -11,6 +11,18 @@
  * publishes a new taxonomy and diff the JSON.
  *
  * This writes the file; the deposit itself stays a human act (CSAM/itsme).
+ *
+ * STATUS (2026-08-02): validated with Arelle 2.37 against NBB-CBSO-26.0.15.
+ * 92 of 104 facts are accepted. Two gaps remain before a real deposit:
+ *   1. Section 1 (identificatie) is not emitted yet - the CBSO requires
+ *      entity name, legal form, address, court, deposit date of the last
+ *      deed, and the accounting period start/end dates (oa_01.00.* rules).
+ *   2. Six equity/total rubrieken (10/11, 12, 13, 14, 15, 10/49) still get a
+ *      dimension tuple the taxonomy rejects: their rows inherit members
+ *      through a presentation path the extractor does not follow yet.
+ * The rubriek VALUES are correct and reproduce the filed 2025 accounts; it is
+ * the XBRL envelope that is unfinished. Always run Arelle over the generated
+ * instance (or the Filing app's validate step) before depositing.
  */
 import MAP from "./cbso-m87f-map.json" with { type: "json" };
 

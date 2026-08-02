@@ -29,21 +29,11 @@
    "label": "TOTAAL VAN DE PASSIVA",
    "part": "part:m3"
   },
-  "110": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:ntr": "ntr:m3",
-    "dim:rst": "rst:m1",
-    "dim:sts": "sts:m7"
-   },
-   "label": "Beschikbaar",
-   "part": "part:m3"
-  },
   "12": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m42"
+    "dim:bas": "bas:m42",
+    "dim:rst": "rst:m1"
    },
    "label": "Herwaarderingsmeerwaarden",
    "part": "part:m3"
@@ -51,7 +41,8 @@
   "13": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m43"
+    "dim:bas": "bas:m43",
+    "dim:rst": "rst:m1"
    },
    "label": "Reserves",
    "part": "part:m3"
@@ -60,7 +51,6 @@
    "concept": "met:am2",
    "dims": {
     "dim:bas": "bas:m44",
-    "dim:ntr": "ntr:m4",
     "dim:sts": "sts:m8"
    },
    "label": "Overgedragen winst (verlies)",
@@ -91,26 +81,6 @@
    "label": "VOORZIENINGEN EN UITGESTELDE BELASTINGEN",
    "part": "part:m3"
   },
-  "160/5": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m48",
-    "dim:typ": "typ:m4"
-   },
-   "label": "Voorzieningen voor risico's en kosten",
-   "part": "part:m3"
-  },
-  "168": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m49",
-    "dim:rst": "rst:m2",
-    "dim:spec": "spec:m6",
-    "dim:sts": "sts:m9"
-   },
-   "label": "Uitgestelde belastingen",
-   "part": "part:m3"
-  },
   "17": {
    "concept": "met:am1",
    "dims": {
@@ -126,46 +96,6 @@
     "dim:bas": "bas:m50"
    },
    "label": "SCHULDEN",
-   "part": "part:m3"
-  },
-  "170/4": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:ntr": "ntr:m3",
-    "dim:rst": "rst:m1"
-   },
-   "label": "Financiële schulden",
-   "part": "part:m3"
-  },
-  "175": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m3"
-   },
-   "label": "Handelsschulden",
-   "part": "part:m3"
-  },
-  "176": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m20",
-    "dim:rst": "rst:m1",
-    "dim:spec": "spec:m5"
-   },
-   "label": "Vooruitbetalingen op bestellingen",
-   "part": "part:m3"
-  },
-  "178/9": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Overige schulden",
    "part": "part:m3"
   },
   "19": {
@@ -197,9 +127,7 @@
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m2",
-    "dim:ntr": "ntr:m1",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
+    "dim:ntr": "ntr:m1"
    },
    "label": "Immateriële vaste activa",
    "part": "part:m1"
@@ -212,90 +140,20 @@
    "label": "VASTE ACTIVA",
    "part": "part:m1"
   },
-  "22": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m3",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Terreinen en gebouwen",
-   "part": "part:m1"
-  },
   "22/27": {
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m2",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
+    "dim:ntr": "ntr:m2"
    },
    "label": "Materiële vaste activa",
-   "part": "part:m1"
-  },
-  "23": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m4",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Installaties, machines en uitrusting",
-   "part": "part:m1"
-  },
-  "24": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m5",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Meubilair en rollend materieel",
-   "part": "part:m1"
-  },
-  "25": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m6",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Leasing en soortgelijke rechten",
-   "part": "part:m1"
-  },
-  "26": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m2",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Overige materiële vaste activa",
-   "part": "part:m1"
-  },
-  "27": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m7",
-    "dim:ntr": "ntr:m2",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Activa in aanbouw en vooruitbetalingen",
    "part": "part:m1"
   },
   "28": {
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m2",
-    "dim:ntr": "ntr:m3",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
+    "dim:ntr": "ntr:m3"
    },
    "label": "Financiële vaste activa",
    "part": "part:m1"
@@ -304,8 +162,7 @@
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m9",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
+    "dim:rst": "rst:m1"
    },
    "label": "Vorderingen op meer dan één jaar",
    "part": "part:m1"
@@ -313,100 +170,28 @@
   "29/58": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m12",
-    "dim:typ": "typ:m1"
+    "dim:bas": "bas:m12"
    },
    "label": "VLOTTENDE ACTIVA",
-   "part": "part:m1"
-  },
-  "290": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m9",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m3"
-   },
-   "label": "Handelsvorderingen",
-   "part": "part:m1"
-  },
-  "291": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m9",
-    "dim:rst": "rst:m1",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Overige vorderingen",
    "part": "part:m1"
   },
   "3": {
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m13",
-    "dim:sts": "sts:m2",
-    "dim:typ": "typ:m1"
+    "dim:sts": "sts:m2"
    },
    "label": "Voorraden en bestellingen in uitvoering",
-   "part": "part:m1"
-  },
-  "30/36": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m14",
-    "dim:sts": "sts:m2",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Voorraden",
-   "part": "part:m1"
-  },
-  "37": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m21",
-    "dim:sts": "sts:m2",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Bestellingen in uitvoering",
-   "part": "part:m1"
-  },
-  "40": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m9",
-    "dim:rst": "rst:m2",
-    "dim:typ": "typ:m3"
-   },
-   "label": "Handelsvorderingen",
    "part": "part:m1"
   },
   "40/41": {
    "concept": "met:am1",
    "dims": {
     "dim:bas": "bas:m9",
-    "dim:rst": "rst:m2",
-    "dim:typ": "typ:m1"
+    "dim:rst": "rst:m2"
    },
    "label": "Vorderingen op ten hoogste één jaar",
    "part": "part:m1"
-  },
-  "41": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m9",
-    "dim:rst": "rst:m2",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Overige vorderingen",
-   "part": "part:m1"
-  },
-  "42": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m3"
-   },
-   "label": "Schulden op meer dan één jaar die binnen het jaar vervallen",
-   "part": "part:m3"
   },
   "42/48": {
    "concept": "met:am1",
@@ -417,61 +202,10 @@
    "label": "Schulden op ten hoogste één jaar",
    "part": "part:m3"
   },
-  "43": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:ntr": "ntr:m3",
-    "dim:rst": "rst:m2"
-   },
-   "label": "Financiële schulden",
-   "part": "part:m3"
-  },
-  "44": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m2",
-    "dim:typ": "typ:m3"
-   },
-   "label": "Handelsschulden",
-   "part": "part:m3"
-  },
-  "45": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m2",
-    "dim:spec": "spec:m6"
-   },
-   "label": "Schulden met betrekking tot belastingen, bezoldigingen en sociale lasten",
-   "part": "part:m3"
-  },
-  "46": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m20",
-    "dim:rst": "rst:m2",
-    "dim:spec": "spec:m5"
-   },
-   "label": "Vooruitbetalingen op bestellingen",
-   "part": "part:m3"
-  },
-  "47/48": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m50",
-    "dim:rst": "rst:m2",
-    "dim:typ": "typ:m1"
-   },
-   "label": "Overige schulden",
-   "part": "part:m3"
-  },
   "490/1": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m24",
-    "dim:typ": "typ:m1"
+    "dim:bas": "bas:m24"
    },
    "label": "Overlopende rekeningen",
    "part": "part:m1"
@@ -487,8 +221,7 @@
   "50/53": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m22",
-    "dim:typ": "typ:m1"
+    "dim:bas": "bas:m22"
    },
    "label": "Geldbeleggingen",
    "part": "part:m1"
@@ -496,8 +229,7 @@
   "54/58": {
    "concept": "met:am1",
    "dims": {
-    "dim:bas": "bas:m23",
-    "dim:typ": "typ:m1"
+    "dim:bas": "bas:m23"
    },
    "label": "Liquide middelen",
    "part": "part:m1"
@@ -523,7 +255,9 @@
   "630": {
    "concept": "met:am1",
    "dims": {
+    "dim:bas": "bas:m1",
     "dim:bkd": "bkd:m1",
+    "dim:ntr": "ntr:m6",
     "dim:spec": "spec:m9"
    },
    "label": "Afschrijvingen en waardeverminderingen op oprichtingskosten, op immateriële en materiële vaste activa",
@@ -553,6 +287,8 @@
   "640/8": {
    "concept": "met:am1",
    "dims": {
+    "dim:bas": "bas:m1",
+    "dim:ntr": "ntr:m6",
     "dim:typ": "typ:m2"
    },
    "label": "Andere bedrijfskosten",
@@ -561,20 +297,12 @@
   "649": {
    "concept": "met:am3",
    "dims": {
+    "dim:bas": "bas:m1",
     "dim:mdp": "mdp:m3",
+    "dim:ntr": "ntr:m6",
     "dim:spec": "spec:m11"
    },
    "label": "Als herstructureringskosten geactiveerde bedrijfskosten",
-   "part": "part:m4"
-  },
-  "65": {
-   "concept": "met:am2",
-   "dims": {
-    "dim:bas": "bas:m1",
-    "dim:ntr": "ntr:m3",
-    "dim:typ": "typ:m8"
-   },
-   "label": "Recurrente financiële kosten",
    "part": "part:m4"
   },
   "65/66B": {
@@ -596,21 +324,10 @@
    "label": "Niet-recurrente bedrijfskosten",
    "part": "part:m4"
   },
-  "66B": {
-   "concept": "met:am2",
-   "dims": {
-    "dim:bas": "bas:m1",
-    "dim:ntr": "ntr:m3",
-    "dim:typ": "typ:m7"
-   },
-   "label": "Niet-recurrente financiële kosten",
-   "part": "part:m4"
-  },
   "67/77": {
    "concept": "met:am2",
    "dims": {
     "dim:bas": "bas:m49",
-    "dim:ntr": "ntr:m3",
     "dim:spec": "spec:m17"
    },
    "label": "Belastingen op het resultaat",
@@ -621,7 +338,6 @@
    "dims": {
     "dim:bas": "bas:m49",
     "dim:mdp": "mdp:m5",
-    "dim:ntr": "ntr:m3",
     "dim:sts": "sts:m9"
    },
    "label": "Overboeking naar de uitgestelde belastingen",
@@ -665,16 +381,6 @@
    "label": "Omzet",
    "part": "part:m4"
   },
-  "75": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m52",
-    "dim:ntr": "ntr:m3",
-    "dim:typ": "typ:m8"
-   },
-   "label": "Recurrente financiële opbrengsten",
-   "part": "part:m4"
-  },
   "75/76B": {
    "concept": "met:am1",
    "dims": {
@@ -697,19 +403,11 @@
   "76A": {
    "concept": "met:am1",
    "dims": {
-    "dim:typ": "typ:m7"
-   },
-   "label": "Niet-recurrente bedrijfsopbrengsten",
-   "part": "part:m4"
-  },
-  "76B": {
-   "concept": "met:am1",
-   "dims": {
     "dim:bas": "bas:m52",
-    "dim:ntr": "ntr:m3",
+    "dim:ntr": "ntr:m6",
     "dim:typ": "typ:m7"
    },
-   "label": "Niet-recurrente financiële opbrengsten",
+   "label": "Waarvan: niet-recurrente bedrijfsopbrengsten",
    "part": "part:m4"
   },
   "780": {
@@ -717,7 +415,6 @@
    "dims": {
     "dim:bas": "bas:m49",
     "dim:mdp": "mdp:m4",
-    "dim:ntr": "ntr:m3",
     "dim:sts": "sts:m9"
    },
    "label": "Onttrekking aan de uitgestelde belastingen",
@@ -751,41 +448,6 @@
    "label": "Tussenkomst van de vennoten in het verlies",
    "part": "part:m5"
   },
-  "9500": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m9",
-    "dim:ntr": "ntr:m3",
-    "dim:psn": "psn:m31",
-    "dim:spec": "spec:m74"
-   },
-   "label": "Uitstaande vorderingen op deze personen",
-   "part": "part:m6"
-  },
-  "9501": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m102",
-    "dim:bnf": "bnf:m6",
-    "dim:gtd": "gtd:m6",
-    "dim:psn": "psn:m31"
-   },
-   "label": "Waarborgen toegestaan in hun voordeel",
-   "part": "part:m6"
-  },
-  "9502": {
-   "concept": "met:am1",
-   "dims": {
-    "dim:bas": "bas:m89",
-    "dim:bnf": "bnf:m6",
-    "dim:gtd": "gtd:m6",
-    "dim:psn": "psn:m31",
-    "dim:sts": "sts:m23",
-    "dim:typ": "typ:m2"
-   },
-   "label": "Andere betekenisvolle verplichtingen aangegaan in hun voordeel",
-   "part": "part:m6"
-  },
   "9900": {
    "concept": "met:am2",
    "dims": {
@@ -808,7 +470,6 @@
    "concept": "met:am2",
    "dims": {
     "dim:bas": "bas:m59",
-    "dim:ntr": "ntr:m3",
     "dim:spec": "spec:m16"
    },
    "label": "Winst (Verlies) van het boekjaar vóór belasting",
