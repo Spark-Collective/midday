@@ -49,12 +49,18 @@ const M39 = readFileSync(
   "utf8",
 );
 
+const M40 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0040_expense_notes.sql"),
+  "utf8",
+);
+
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
   DROP VIEW IF EXISTS v_general_ledger;
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
-  DROP TABLE IF EXISTS filings, director_items, directors, tax_parameters,
+  DROP TABLE IF EXISTS expense_note_lines, expense_notes,
+    filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
     tax_codes, ledger_lines, journal_entries, fiscal_periods, journals,
@@ -109,6 +115,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M15);
   await db.query(M16);
   await db.query(M39);
+  await db.query(M40);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

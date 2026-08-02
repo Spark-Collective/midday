@@ -23,6 +23,7 @@ import { invoiceProductsRouter } from "./invoice-products";
 import { invoiceRecurringRouter } from "./invoice-recurring";
 import { invoiceTemplateRouter } from "./invoice-template";
 import { jobsRouter } from "./jobs";
+import { expenseNotesRouter } from "./expense-notes";
 import { ledgerRouter } from "./ledger";
 import { notificationSettingsRouter } from "./notification-settings";
 import { notificationsRouter } from "./notifications";
@@ -69,6 +70,7 @@ export const appRouter = createTRPCRouter({
   invoiceTemplate: invoiceTemplateRouter,
   jobs: jobsRouter,
   filings: filingsRouter,
+  expenseNotes: expenseNotesRouter,
   ledger: ledgerRouter,
   owner: ownerRouter,
   overview: overviewRouter,

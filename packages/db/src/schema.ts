@@ -4891,3 +4891,75 @@ export const taxParameters = pgTable(
     }),
   ],
 );
+
+// Onkostennota's (M10): a director claiming personally-paid business costs
+// back from the company. No VAT (the supplier invoice is in the director's own
+// name); the credit goes to that director's R/C account. Migration 0040.
+export const expenseNotes = pgTable(
+  "expense_notes",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    directorId: uuid("director_id").references(() => directors.id, {
+      onDelete: "restrict",
+    }),
+    submitterName: text("submitter_name").notNull(),
+    submitterAddress: text("submitter_address"),
+    submitterIban: text("submitter_iban"),
+    year: integer().notNull(),
+    seq: integer().notNull(),
+    noteNumber: text("note_number").notNull(),
+    issueDate: date("issue_date").notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+    currency: text().default("EUR").notNull(),
+    total: numericCasted({ precision: 12, scale: 2 }).default(0).notNull(),
+    notes: text(),
+    status: text().default("draft").notNull(),
+    journalEntryId: uuid("journal_entry_id"),
+    filePath: text("file_path").array(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("expense_notes_number_unique").on(table.teamId, table.noteNumber),
+    unique("expense_notes_seq_unique").on(table.teamId, table.year, table.seq),
+    index("expense_notes_team_idx").on(table.teamId, table.issueDate.desc()),
+  ],
+);
+
+export const expenseNoteLines = pgTable(
+  "expense_note_lines",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    expenseNoteId: uuid("expense_note_id")
+      .notNull()
+      .references(() => expenseNotes.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    position: integer().default(0).notNull(),
+    description: text().notNull(),
+    periodLabel: text("period_label"),
+    category: text(),
+    glAccountCode: text("gl_account_code").notNull(),
+    quantity: numericCasted({ precision: 12, scale: 4 }),
+    unit: text(),
+    unitPrice: numericCasted({ precision: 12, scale: 6 }),
+    claimPct: numericCasted({ precision: 5, scale: 2 }).default(100).notNull(),
+    amount: numericCasted({ precision: 12, scale: 2 }).notNull(),
+    basisNote: text("basis_note"),
+  },
+  (table) => [
+    index("expense_note_lines_note_idx").on(
+      table.expenseNoteId,
+      table.position,
+    ),
+  ],
+);
