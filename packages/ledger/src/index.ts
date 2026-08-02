@@ -123,7 +123,10 @@ export {
 export {
   getTaxParameter,
   listTaxParameters,
+  PIT_SEED_2024,
+  resolvePitValues,
   SEED_PARAMETERS,
+  seedPitParameters,
   seedTaxParameters,
   type TaxParameter,
 } from "./tax-params.js";
@@ -140,3 +143,4 @@ export {
   type VatPeriod,
   type VatReturnResult,
 } from "./vat-return.js";
+export { postExpenseNote, type PostExpenseNoteInput } from "./post-expense-note.js";

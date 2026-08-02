@@ -1,13 +1,17 @@
 import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
+  buildPersonalTaxPack,
   checkVatProbabilityRules,
+  computePersonalTax,
   computeVatGrids,
   generateFilings,
   listFilings,
   markFiled,
+  resolvePitValues,
   setFilingData,
   setStep,
+  toPitParameters,
   type VatPeriod,
 } from "@midday/ledger";
 import type { Pool, PoolClient } from "pg";
@@ -110,6 +114,82 @@ export const filingsRouter = createTRPCRouter({
       });
       const probability = checkVatProbabilityRules(grids);
       const payload = { grids, warnings, probability };
+      await withClient((c) =>
+        setFilingData(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          data: payload,
+        }),
+      );
+      return payload;
+    }),
+
+  /**
+   * Assemble the director's personal return and, when the parameter set for that
+   * income year is complete, compute it. The computation is refused rather than
+   * approximated when a parameter is missing: a plausible wrong tax figure is the
+   * most harmful thing this product could produce.
+   */
+  preparePersonalTax: protectedProcedure
+    .input(
+      z.object({
+        filingId: z.string().uuid(),
+        directorId: z.string().uuid(),
+        incomeYear: z.number().int(),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const pack = await buildPersonalTaxPack(pool(), {
+        teamId: teamId!,
+        directorId: input.directorId,
+        incomeYear: input.incomeYear,
+      });
+
+      const dir = await pool().query(
+        "SELECT municipality FROM directors WHERE id = $1 AND team_id = $2",
+        [input.directorId, teamId],
+      );
+      const municipality = (dir.rows[0]?.municipality as string | null) ?? "";
+
+      let computation: ReturnType<typeof computePersonalTax> | null = null;
+      let parameterGaps: string[] = [];
+      if (!municipality) {
+        parameterGaps = [
+          "The director has no municipality set. The municipal surcharge cannot be resolved, so the tax cannot be computed.",
+        ];
+      } else {
+        const resolved = await resolvePitValues(
+          pool(),
+          input.incomeYear,
+          municipality,
+        );
+        if (resolved.missing.length > 0) {
+          parameterGaps = resolved.missing.map(
+            (k: string) => `Missing tax parameter for ${input.incomeYear}: ${k}`,
+          );
+        } else {
+          const params = toPitParameters(
+            input.incomeYear,
+            resolved.values,
+            resolved.municipalSurchargePct!,
+            resolved.allVerified,
+          );
+          computation = computePersonalTax(params, {
+            grossRemuneration:
+              pack.lines.find((l) => l.boxKey === "remuneration")?.amount ?? 0,
+            benefitsInKind:
+              pack.lines.find((l) => l.boxKey === "benefitsInKind")?.amount ??
+              0,
+            personalSocialContributions:
+              pack.lines.find((l) => l.boxKey === "socialContributions")
+                ?.amount ?? 0,
+            withholding: pack.totals.withholding,
+            advancePayments: pack.totals.advancePayments,
+          });
+        }
+      }
+
+      const payload = { pack, computation, parameterGaps, municipality };
       await withClient((c) =>
         setFilingData(c, {
           teamId: teamId!,
