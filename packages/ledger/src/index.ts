@@ -59,6 +59,22 @@ export {
   listDirectors,
   type OwnerSummary,
 } from "./owner.js";
+export {
+  buildPersonalTaxPack,
+  comparePackToOfficial,
+  DIRECTOR_BOXES,
+  type PersonalTaxLine,
+  type PersonalTaxPack,
+} from "./personal-tax.js";
+export {
+  bracketTax,
+  computePersonalTax,
+  PIT_PARAMETER_KEYS,
+  type PitInput,
+  type PitParameters,
+  type PitResult,
+  toPitParameters,
+} from "./personal-tax-compute.js";
 export type { LedgerDb } from "./post.js";
 export {
   LedgerError,
