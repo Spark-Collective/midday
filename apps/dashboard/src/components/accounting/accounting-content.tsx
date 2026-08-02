@@ -780,6 +780,7 @@ function AnnualAccountsTab() {
   const now = new Date().getFullYear();
   const [year, setYear] = useState(now - 1);
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery(
     trpc.ledger.annualAccounts.queryOptions({ year, compareYear: year - 1 }),
   );
@@ -787,6 +788,22 @@ function AnnualAccountsTab() {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   const failed = data.checks.filter((c) => !c.ok);
+
+  const downloadXbrl = async () => {
+    const res = await queryClient.fetchQuery(
+      trpc.ledger.annualAccountsXbrl.queryOptions({
+        year,
+        compareYear: year - 1,
+      }),
+    );
+    const blob = new Blob([res.xml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = res.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const section = (
     title: string,
@@ -830,6 +847,15 @@ function AnnualAccountsTab() {
         <span className="text-xs text-muted-foreground">
           micromodel m87-f · kolommen: {data.years.join(" / ")}
         </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          disabled={failed.length > 0}
+          onClick={downloadXbrl}
+        >
+          Download XBRL
+        </Button>
       </div>
 
       <div
@@ -837,8 +863,8 @@ function AnnualAccountsTab() {
       >
         {failed.length === 0 ? (
           <span>
-            Alle {data.checks.length} rekenkundige controles OK — klaar voor
-            neerlegging via filing.cbso.nbb.be.
+            Alle {data.checks.length} wettelijke controles OK. Download het
+            XBRL-bestand en leg neer via filing.cbso.nbb.be (itsme/eID).
           </span>
         ) : (
           <ul className="space-y-1">

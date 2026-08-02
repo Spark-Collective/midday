@@ -7,6 +7,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Pool, type PoolClient } from "pg";
 import { getAnnualAccounts } from "../src/annual-accounts.js";
+import {
+  buildAnnualAccountsXbrl,
+  checkLegalControls,
+} from "../src/annual-accounts-xbrl.js";
 import { postEntry } from "../src/post.js";
 import { seedBelgianLedger } from "../src/seed.js";
 import { initTestDb, TEST_DB_URL } from "./helpers/setup.js";
@@ -133,8 +137,10 @@ describe("annual accounts (M9)", () => {
     expect(val(aa.resultatenrekening, "630")).toBe(200);
     expect(val(aa.resultatenrekening, "9901")).toBe(1800);
     expect(val(aa.resultatenrekening, "9904")).toBe(1800);
-    expect(val(aa.resultaatverwerking, "9905")).toBe(1800);
-    expect(val(aa.resultaatverwerking, "14P")).toBe(1800);
+    expect(val(aa.resultatenrekening, "9905")).toBe(1800);
+    expect(val(aa.resultaatverwerking, "14P")).toBe(0); // first year, nothing carried in
+    expect(val(aa.resultaatverwerking, "9906")).toBe(1800);
+    expect(val(aa.resultaatverwerking, "14")).toBe(1800);
     expect(aa.checks.every((c) => c.ok)).toBe(true);
   });
 
@@ -146,6 +152,8 @@ describe("annual accounts (M9)", () => {
     });
     expect(val(aa.resultatenrekening, "9904")).toBe(200);
     expect(val(aa.balans.passiva, "14")).toBe(2000); // 1800 processed + 200 open
+    expect(val(aa.resultaatverwerking, "14P")).toBe(1800); // carried in
+    expect(val(aa.resultaatverwerking, "9906")).toBe(2000);
     expect(val(aa.balans.activa, "20/58")).toBe(
       val(aa.balans.passiva, "10/49"),
     );
@@ -153,5 +161,52 @@ describe("annual accounts (M9)", () => {
     expect(aa.years).toEqual([2026, 2025]);
     expect(aa.resultatenrekening.find((x) => x.code === "9904")?.values[1]).toBe(1800);
     expect(aa.checks.every((c) => c.ok)).toBe(true);
+  });
+});
+
+describe("CBSO XBRL instance (M9)", () => {
+  test("writes a well-formed m87-f instance with taxonomy-derived datapoints", async () => {
+    const aa = await getAnnualAccounts(db, { teamId, year: 2025 });
+    const res = buildAnnualAccountsXbrl({
+      declarant: { enterpriseNumber: "0805193139", name: "Test BV" },
+      closingDate: "2025-12-31",
+      values: aa.values,
+    });
+    // every rubriek the mapper emits must exist in the extracted taxonomy map
+    expect(res.skipped).toEqual([]);
+    expect(res.factCount).toBeGreaterThan(10);
+    expect(res.filename).toBe("0805193139-2025-m87-f.xbrl");
+    expect(res.xml).toContain(
+      'xlink:href="http://www.nbb.be/be/fr/cbso/fws/26.0/mod/m87/m87-f.xsd"',
+    );
+    expect(res.xml).toContain(
+      '<identifier scheme="http://www.fgov.be">0805193139</identifier>',
+    );
+    expect(res.xml).toContain("<instant>2025-12-31</instant>");
+    // dimensional facts, not per-rubriek elements
+    expect(res.xml).toMatch(/<xbrldi:explicitMember dimension="dim:bas">bas:m\d+</);
+    expect(res.xml).toContain('decimals="INF" unitRef="EUR"');
+    // parses as XML and every context is referenced by a fact
+    const ids = [...res.xml.matchAll(/<context id="(c\d+)"/g)].map((m) => m[1]);
+    for (const id of ids) expect(res.xml).toContain(`contextRef="${id}"`);
+  });
+
+  test("legal controls catch a broken balance sheet", () => {
+    // a complete, internally consistent mini balance sheet (P&L all zero)
+    const good = {
+      "22/27": [100],
+      "21/28": [100],
+      "20/58": [100],
+      "10/11": [40],
+      "10/15": [40],
+      "42/48": [60],
+      "17/49": [60],
+      "10/49": [100],
+    };
+    expect(checkLegalControls(good).filter((c) => !c.ok)).toEqual([]);
+    const bad = { ...good, "10/49": [90] };
+    const failures = checkLegalControls(bad).filter((c) => !c.ok);
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.some((f) => f.control.includes("20/58=10/49"))).toBe(true);
   });
 });

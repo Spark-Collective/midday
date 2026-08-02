@@ -1,6 +1,7 @@
 import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
+  buildAnnualAccountsXbrl,
   closePeriod,
   computeVatGrids,
   generateVatReturn,
@@ -137,6 +138,48 @@ export const ledgerRouter = createTRPCRouter({
         year: input.year,
         compareYear: input.compareYear,
       });
+    }),
+
+  // Filing-ready CBSO XBRL instance (m87-f). Declarant details come from env,
+  // same pattern as the Intervat export; the deposit itself stays a human act.
+  annualAccountsXbrl: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2000).max(2100),
+        compareYear: z.number().int().min(2000).max(2100).optional(),
+      }),
+    )
+    .query(async ({ ctx: { teamId }, input }) => {
+      const enterpriseNumber = (process.env.LEDGER_VAT_NUMBER ?? "").replace(
+        /\D/g,
+        "",
+      );
+      if (!enterpriseNumber) {
+        throw new Error("LEDGER_VAT_NUMBER not configured");
+      }
+      const aa = await getAnnualAccounts(ledgerDb(), {
+        teamId: teamId!,
+        year: input.year,
+        compareYear: input.compareYear,
+      });
+      const failed = aa.checks.filter((c) => !c.ok);
+      const result = buildAnnualAccountsXbrl({
+        declarant: {
+          enterpriseNumber,
+          name: process.env.LEDGER_COMPANY_NAME ?? "",
+        },
+        closingDate: `${input.year}-12-31`,
+        previousClosingDate: input.compareYear
+          ? `${input.compareYear}-12-31`
+          : undefined,
+        values: aa.values,
+      });
+      return {
+        ...result,
+        // A refused filing (DAT 33) is the expensive failure mode; surface the
+        // broken controls instead of letting a bad instance be uploaded.
+        blocking: failed.map((c) => `${c.name}: ${c.detail}`),
+      };
     }),
 
   // Single-entry drill-through: all lines with VAT detail + source document.

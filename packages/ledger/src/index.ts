@@ -78,3 +78,10 @@ export {
   type VatReturnResult,
 } from "./vat-return.js";
 export { getAnnualAccounts, type AnnualAccounts, type Rubriek } from "./annual-accounts.js";
+export {
+  buildAnnualAccountsXbrl,
+  checkLegalControls,
+  LEGAL_CONTROLS,
+  type XbrlInput,
+  type XbrlResult,
+} from "./annual-accounts-xbrl.js";

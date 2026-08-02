@@ -6,6 +6,7 @@
  * arithmetic controls the Balanscentrale enforces. The XBRL serialization
  * lives in annual-accounts-xbrl.ts; filing itself stays a human act.
  */
+import { checkLegalControls } from "./annual-accounts-xbrl.js";
 import type { LedgerDb } from "./post.js";
 
 export type Rubriek = {
@@ -20,8 +21,10 @@ export type AnnualAccounts = {
   balans: { activa: Rubriek[]; passiva: Rubriek[] };
   resultatenrekening: Rubriek[];
   resultaatverwerking: Rubriek[];
-  /** Balanscentrale-style arithmetic controls; all must be true to file. */
+  /** Balanscentrale legal controls; all must be true to file. */
   checks: Array<{ name: string; ok: boolean; detail: string }>;
+  /** rubriek -> values per period, the XBRL writer's input. */
+  values: Record<string, number[]>;
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -170,14 +173,58 @@ export async function getAnnualAccounts(
   ];
 
   // ---------------- Resultatenrekening (micro: brutomarge form)
-  // 9900 = bedrijfsopbrengsten (70/74, 76A) - handelsgoederen (60) -
-  //        diensten en diverse goederen (61)
-  const opbrengsten = (p: Sums) =>
-    pick(p, ["70", "71", "72", "74", "76"], -1); // 76A: niet-recurrente bedrijfsopbrengsten
+  // The niet-recurrente accounts split between the operating and financial
+  // blocks: 660-663 / 760-762 are operating (66A / 76A), 664-669 / 763-769
+  // financial (66B / 76B). The rubrieken below are the definition; the legal
+  // controls in annual-accounts-xbrl.ts verify them.
+  const NR_COST_OP = ["660", "661", "662", "663"];
+  const NR_COST_FIN = ["664", "665", "666", "667", "668", "669"];
+  const NR_INC_OP = ["760", "761", "762"];
+  const NR_INC_FIN = ["763", "764", "765", "766", "767", "768", "769"];
+  const nrCostOp = (p: Sums) => pick(p, NR_COST_OP);
+  const nrIncOp = (p: Sums) => pick(p, NR_INC_OP, -1);
+  /** 9900 = bedrijfsopbrengsten (70/74 + 76A) - 60 - 61 */
+  const brutomarge = (p: Sums) =>
+    r2(
+      pick(p, ["70", "71", "72", "74"], -1) +
+        nrIncOp(p) -
+        pick(p, ["60"]) -
+        pick(p, ["61"]),
+    );
+  const finOpbrengsten = (p: Sums) =>
+    r2(pick(p, ["75"], -1) + pick(p, NR_INC_FIN, -1));
+  const finKosten = (p: Sums) =>
+    r2(pick(p, ["65"]) + pick(p, NR_COST_FIN));
+  /** 649 is credit-natural and displayed non-positive. */
+  const geactiveerd = (p: Sums) => pick(p, ["649"]);
+  const bedrijfswinst = (p: Sums) =>
+    r2(
+      brutomarge(p) -
+        pick(p, ["62"]) -
+        pick(p, ["630"]) -
+        pick(p, ["631", "632", "633", "634"]) -
+        pick(p, ["635", "636", "637", "638"]) -
+        pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]) -
+        geactiveerd(p) -
+        nrCostOp(p),
+    );
+  const winstVoorBelasting = (p: Sums) =>
+    r2(bedrijfswinst(p) + finOpbrengsten(p) - finKosten(p));
+  /** 67/77 net tax charge; 780/680 deferred-tax movements. */
+  const belastingen = (p: Sums) => r2(pick(p, ["67"]) - pick(p, ["77"], -1));
+  const winstBoekjaar = (p: Sums) =>
+    r2(
+      winstVoorBelasting(p) +
+        pick(p, ["780"], -1) -
+        pick(p, ["680"]) -
+        belastingen(p),
+    );
+  /** 9905 te bestemmen winst VAN HET BOEKJAAR (before adding 14P). */
+  const teBestemmenBoekjaar = (p: Sums) =>
+    r2(winstBoekjaar(p) + pick(p, ["789"], -1) - pick(p, ["689"]));
+
   const rr: Rubriek[] = [
-    rub("9900", "Brutomarge", (_b, p) =>
-      r2(opbrengsten(p) - pick(p, ["60"]) - pick(p, ["61"])),
-    ),
+    rub("9900", "Brutomarge", (_b, p) => brutomarge(p)),
     rub("62", "Bezoldigingen, sociale lasten en pensioenen", (_b, p) =>
       pick(p, ["62"]),
     ),
@@ -193,94 +240,93 @@ export async function getAnnualAccounts(
     rub("640/8", "Andere bedrijfskosten", (_b, p) =>
       pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]),
     ),
-    rub("649", "Geactiveerde bedrijfskosten (-)", (_b, p) => pick(p, ["649"], -1)),
-    rub("9901", "Bedrijfswinst (Bedrijfsverlies)", (_b, p) =>
-      r2(
-        opbrengsten(p) -
-          pick(p, ["60"]) -
-          pick(p, ["61"]) -
-          pick(p, ["62"]) -
-          pick(p, ["63"]) -
-          pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]) +
-          pick(p, ["649"], -1),
-      ),
+    rub("649", "Als herstructureringskosten geactiveerde bedrijfskosten (-)", (_b, p) =>
+      geactiveerd(p),
     ),
-    rub("75/76B", "Financiële opbrengsten", (_b, p) => pick(p, ["75"], -1)),
-    rub("65/66B", "Financiële kosten", (_b, p) => pick(p, ["65", "66"])),
+    rub("66A", "Niet-recurrente bedrijfskosten", (_b, p) => nrCostOp(p)),
+    rub("76A", "Niet-recurrente bedrijfsopbrengsten", (_b, p) => nrIncOp(p)),
+    rub("9901", "Bedrijfswinst (Bedrijfsverlies)", (_b, p) => bedrijfswinst(p)),
+    rub("75/76B", "Financiële opbrengsten", (_b, p) => finOpbrengsten(p)),
+    rub("753", "Waarvan: kapitaal- en interestsubsidies", (_b, p) =>
+      pick(p, ["753"], -1),
+    ),
+    rub("65/66B", "Financiële kosten", (_b, p) => finKosten(p)),
     rub("9903", "Winst (Verlies) van het boekjaar vóór belasting", (_b, p) =>
-      r2(
-        opbrengsten(p) -
-          pick(p, ["60"]) -
-          pick(p, ["61"]) -
-          pick(p, ["62"]) -
-          pick(p, ["63"]) -
-          pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]) +
-          pick(p, ["649"], -1) +
-          pick(p, ["75"], -1) -
-          pick(p, ["65", "66"]),
-      ),
+      winstVoorBelasting(p),
     ),
-    rub("67/77", "Belastingen op het resultaat", (_b, p) =>
-      r2(pick(p, ["67"]) - pick(p, ["77"], -1)),
+    rub("780", "Onttrekking aan de uitgestelde belastingen", (_b, p) =>
+      pick(p, ["780"], -1),
     ),
-    rub("9904", "Winst (Verlies) van het boekjaar", (_b, p) =>
-      r2(
-        opbrengsten(p) -
-          pick(p, ["60"]) -
-          pick(p, ["61"]) -
-          pick(p, ["62"]) -
-          pick(p, ["63"]) -
-          pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]) +
-          pick(p, ["649"], -1) +
-          pick(p, ["75"], -1) -
-          pick(p, ["65", "66"]) -
-          pick(p, ["67"]) +
-          pick(p, ["77"], -1),
-      ),
+    rub("680", "Overboeking naar de uitgestelde belastingen", (_b, p) =>
+      pick(p, ["680"]),
+    ),
+    rub("67/77", "Belastingen op het resultaat", (_b, p) => belastingen(p)),
+    rub("9904", "Winst (Verlies) van het boekjaar", (_b, p) => winstBoekjaar(p)),
+    rub("789", "Onttrekking aan de belastingvrije reserves", (_b, p) =>
+      pick(p, ["789"], -1),
+    ),
+    rub("689", "Overboeking naar de belastingvrije reserves", (_b, p) =>
+      pick(p, ["689"]),
+    ),
+    rub("9905", "Te bestemmen winst (verlies) van het boekjaar", (_b, p) =>
+      teBestemmenBoekjaar(p),
     ),
   ];
 
-  // ---------------- Resultaatverwerking
-  const winst = (p: Sums) =>
-    rr.find((x) => x.code === "9904")!.values[pnl.indexOf(p)]!;
+  // ---------------- Resultaatverwerking (section 5)
+  // 9906 = 9905 + 14P; 14 = 9906 + 791/2 - 691/2 + 794 - 694/7. 14P is the
+  // result carried in from last year (790 when the year has been processed,
+  // otherwise the opening balance of 14).
+  const overgedragenVorig = (b: Sums, p: Sums) => {
+    const viaBooking = pick(p, ["790"], -1);
+    if (viaBooking !== 0) return viaBooking;
+    // not processed yet: 14 at the start of the year = closing 14 minus what
+    // this year's own processing added (nothing), i.e. the 14 balance itself.
+    return r2(pick(b, ["14"], -1) - pick(p, ["14"], -1));
+  };
   const verwerking: Rubriek[] = [
-    rub("9905", "Te bestemmen winst (verlies)", (_b, p) =>
-      r2(winst(p) + pick(p, ["790"], -1) - pick(p, ["690"])),
+    rub("14P", "Overgedragen winst (verlies) van het vorige boekjaar", (b, p) =>
+      overgedragenVorig(b, p),
     ),
-    rub("14P", "Over te dragen winst (verlies)", (_b, p) =>
-      // what 693/793 booked; if the year is not yet processed this equals 0
-      r2(pick(p, ["693"]) - pick(p, ["793"], -1)),
+    rub("9906", "Te bestemmen winst (verlies)", (b, p) =>
+      r2(teBestemmenBoekjaar(p) + overgedragenVorig(b, p)),
+    ),
+    rub("791/2", "Onttrekking aan het eigen vermogen", (_b, p) =>
+      pick(p, ["791", "792"], -1),
+    ),
+    rub("691/2", "Toevoeging aan het eigen vermogen", (_b, p) =>
+      pick(p, ["691", "692"]),
+    ),
+    rub("794", "Tussenkomst van de vennoten in het verlies", (_b, p) =>
+      pick(p, ["794"], -1),
+    ),
+    rub("694/7", "Uit te keren winst", (_b, p) =>
+      pick(p, ["694", "695", "696", "697"]),
+    ),
+    rub("14", "Over te dragen winst (verlies)", (b, p) =>
+      r2(
+        teBestemmenBoekjaar(p) +
+          overgedragenVorig(b, p) +
+          pick(p, ["791", "792"], -1) -
+          pick(p, ["691", "692"]) +
+          pick(p, ["794"], -1) -
+          pick(p, ["694", "695", "696", "697"]),
+      ),
     ),
   ];
 
-  // ---------------- Controls
-  const checks: AnnualAccounts["checks"] = [];
-  const val = (list: Rubriek[], code: string, i = 0) =>
-    list.find((x) => x.code === code)?.values[i] ?? 0;
-  for (let i = 0; i < years.length; i++) {
-    const ta = val(activa, "20/58", i);
-    const tp = val(passiva, "10/49", i);
-    checks.push({
-      name: `balans ${years[i]}`,
-      ok: Math.abs(ta - tp) < 0.005,
-      detail: `activa ${ta.toFixed(2)} vs passiva ${tp.toFixed(2)}`,
-    });
-    const ev = val(passiva, "10/15", i);
-    const sch = val(passiva, "17/49", i);
-    checks.push({
-      name: `passiva-opbouw ${years[i]}`,
-      ok: Math.abs(ev + sch - tp) < 0.005,
-      detail: `10/15 (${ev.toFixed(2)}) + 17/49 (${sch.toFixed(2)}) = ${tp.toFixed(2)}`,
-    });
-    const w9901 = val(rr, "9901", i);
-    const w9903 = val(rr, "9903", i);
-    const fin = val(rr, "75/76B", i) - val(rr, "65/66B", i);
-    checks.push({
-      name: `resultaat-opbouw ${years[i]}`,
-      ok: Math.abs(w9901 + fin - w9903) < 0.005,
-      detail: `9901 (${w9901.toFixed(2)}) + fin (${fin.toFixed(2)}) = 9903 (${w9903.toFixed(2)})`,
-    });
+  // ---------------- Controls: the Balanscentrale legal controls (App. 2.1),
+  // run per period column. A filing failing one of these is refused (DAT 33).
+  const flat: Record<string, number[]> = {};
+  for (const list of [activa, passiva, rr, verwerking]) {
+    for (const r of list) flat[r.code] = r.values;
   }
+  const checks: AnnualAccounts["checks"] = [];
+  years.forEach((y, i) => {
+    for (const c of checkLegalControls(flat, i)) {
+      checks.push({ name: `${c.control} (${y})`, ok: c.ok, detail: c.detail });
+    }
+  });
 
   return {
     years,
@@ -288,5 +334,7 @@ export async function getAnnualAccounts(
     resultatenrekening: rr,
     resultaatverwerking: verwerking,
     checks,
+    /** rubriek -> values, ready for the XBRL writer. */
+    values: flat,
   };
 }
