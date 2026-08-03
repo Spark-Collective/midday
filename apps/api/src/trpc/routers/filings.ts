@@ -2,6 +2,10 @@ import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
   buildAnnualAccountsXbrl,
+  buildClientListing,
+  buildClientListingXml,
+  buildIcStatement,
+  buildIcStatementXml,
   buildPersonalTaxPack,
   checkVatProbabilityRules,
   computePersonalTax,
@@ -9,6 +13,7 @@ import {
   generateFilings,
   generateVatReturn,
   getAnnualAccounts,
+  getTaxParameter,
   listFilings,
   markFiled,
   municipalityForIncomeYear,
@@ -39,6 +44,21 @@ async function withClient<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
   } finally {
     client.release();
   }
+}
+
+/** Declarant block shared by every Intervat document. */
+function declarantFromEnv() {
+  const vatNumber = (process.env.LEDGER_VAT_NUMBER ?? "").replace(/\D/g, "");
+  if (!vatNumber) throw new Error("LEDGER_VAT_NUMBER not configured");
+  return {
+    vatNumber,
+    name: process.env.LEDGER_COMPANY_NAME ?? "",
+    street: process.env.LEDGER_COMPANY_STREET ?? "",
+    postCode: process.env.LEDGER_COMPANY_POSTCODE ?? "",
+    city: process.env.LEDGER_COMPANY_CITY ?? "",
+    countryCode: "BE",
+    email: process.env.LEDGER_COMPANY_EMAIL ?? "",
+  };
 }
 
 const stepStatus = z.enum(["todo", "done", "blocked", "skipped"]);
@@ -440,6 +460,180 @@ export const filingsRouter = createTRPCRouter({
           ],
         });
       });
+      return ref;
+    }),
+
+  /**
+   * Client listing (`lc`) and IC statement (`ico`): build from the invoice
+   * sub-ledger, show the operator what will be filed, and store it on the filing.
+   * Submission reuses the same Intervat path as the VAT return.
+   */
+  prepareListing: protectedProcedure
+    .input(
+      z.object({
+        filingId: z.string().uuid(),
+        kind: z.enum(["client_listing", "ic_statement"]),
+        year: z.number().int(),
+        quarter: z.number().int().min(1).max(4).optional(),
+        month: z.number().int().min(1).max(12).optional(),
+        icCode: z.enum(["L", "S", "T"]).optional(),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const declarant = declarantFromEnv();
+      let payload: Record<string, unknown>;
+
+      if (input.kind === "client_listing") {
+        // Threshold is a tax parameter, never a literal.
+        let threshold = 250;
+        try {
+          threshold = (
+            await getTaxParameter(
+              pool(),
+              input.year,
+              "client_listing_threshold",
+            )
+          ).value;
+        } catch {
+          // Fall back to the statutory default, and say so.
+        }
+        const listing = await buildClientListing(pool(), {
+          teamId: teamId!,
+          year: input.year,
+          threshold,
+        });
+        payload = {
+          kind: input.kind,
+          threshold,
+          rows: listing.rows,
+          turnoverSum: listing.turnoverSum,
+          vatSum: listing.vatSum,
+          warnings: listing.warnings,
+          xml: buildClientListingXml({ declarant, listing }),
+        };
+      } else {
+        const statement = await buildIcStatement(pool(), {
+          teamId: teamId!,
+          year: input.year,
+          quarter: input.quarter,
+          month: input.month,
+          defaultCode: input.icCode,
+        });
+        payload = {
+          kind: input.kind,
+          rows: statement.rows,
+          amountSum: statement.amountSum,
+          warnings: statement.warnings,
+          xml: buildIcStatementXml({ declarant, statement }),
+        };
+      }
+
+      await withClient((c) =>
+        setFilingData(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          data: payload,
+        }),
+      );
+      return { ...payload, xml: "(stored on the filing)" };
+    }),
+
+  /** Submit a prepared listing to Intervat (declarationType lc / ico). */
+  submitListing: protectedProcedure
+    .input(
+      z.object({
+        filingId: z.string().uuid(),
+        kind: z.enum(["client_listing", "ic_statement"]),
+        confirm: z.literal(true),
+        env: z.enum(["test", "prod"]).default("prod"),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const declarant = declarantFromEnv();
+      const creds = credsFromEnv();
+      const env = input.env as MinfinEnv;
+
+      const client = await pool().connect();
+      let accessToken: string;
+      let xml: string;
+      try {
+        const f = await client.query(
+          "SELECT data, period_key FROM filings WHERE id = $1 AND team_id = $2",
+          [input.filingId, teamId],
+        );
+        const data = f.rows[0]?.data as { xml?: string } | null;
+        if (!data?.xml) {
+          throw new Error(
+            "Nothing prepared yet: build the listing before submitting it.",
+          );
+        }
+        xml = data.xml;
+
+        const row = await client.query(
+          `SELECT refresh_token, access_token, expires_in, obtained_at
+             FROM minfin_tokens WHERE team_id = $1 AND env = $2 FOR UPDATE`,
+          [teamId, env],
+        );
+        if (row.rowCount === 0) {
+          throw new Error(`No MinFin token stored for '${env}'.`);
+        }
+        const cur = row.rows[0];
+        if (
+          cur.access_token &&
+          isFresh({
+            obtained_at: Number(cur.obtained_at ?? 0),
+            expires_in: Number(cur.expires_in ?? 0),
+          })
+        ) {
+          accessToken = cur.access_token as string;
+        } else {
+          const t = await refreshToken({
+            env,
+            creds,
+            refreshToken: cur.refresh_token as string,
+          });
+          await client.query(
+            `UPDATE minfin_tokens SET refresh_token=$1, access_token=$2,
+                    expires_in=$3, obtained_at=$4, scope=$5, updated_at=now()
+              WHERE team_id=$6 AND env=$7`,
+            [
+              t.refresh_token,
+              t.access_token,
+              t.expires_in,
+              t.obtained_at,
+              t.scope ?? null,
+              teamId,
+              env,
+            ],
+          );
+          accessToken = t.access_token;
+        }
+      } finally {
+        client.release();
+      }
+
+      const declarationType = input.kind === "client_listing" ? "lc" : "ico";
+      const ref = await submitVat({
+        apiBase: API_BASE[env],
+        accessToken,
+        vatNumber: declarant.vatNumber,
+        content: Buffer.from(xml, "utf8"),
+        filename: `${declarationType}.xml`,
+        lang: "nl",
+        declarationType,
+      });
+
+      await withClient((c) =>
+        markFiled(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          externalRef: ref.xmlReference,
+          artifacts: [
+            { label: "Intervat proof (PDF)", reference: ref.pdfReference },
+            { label: "Intervat proof (XML)", reference: ref.xmlReference },
+          ],
+        }),
+      );
       return ref;
     }),
 });

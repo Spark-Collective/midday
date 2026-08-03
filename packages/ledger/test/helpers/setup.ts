@@ -60,7 +60,7 @@ const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
   DROP TABLE IF EXISTS expense_note_lines, expense_notes,
-    filings, director_items, directors, tax_parameters,
+    customers, filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
     tax_codes, ledger_lines, journal_entries, fiscal_periods, journals,
@@ -99,6 +99,11 @@ const BOOTSTRAP = `
   CREATE TABLE transaction_categories (
     id uuid DEFAULT gen_random_uuid() UNIQUE NOT NULL,
     team_id uuid NOT NULL, slug text, name text
+  );
+  CREATE TABLE customers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL, name text NOT NULL,
+    vat_number text, country text
   );
   CREATE TABLE bank_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

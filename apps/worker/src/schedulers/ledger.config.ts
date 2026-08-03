@@ -26,4 +26,14 @@ export const ledgerStaticSchedulers: StaticSchedulerConfig[] = [
       tz: "UTC",
     },
   },
+  {
+    name: "filings-generate-scheduler",
+    queue: "accounting",
+    cron: "30 3 * * *", // nightly 03:30 UTC; idempotent, so a missed run self-heals
+    jobName: "filings-generate",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
 ];

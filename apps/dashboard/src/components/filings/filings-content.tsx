@@ -595,6 +595,157 @@ function PaymentPanel({ filing }: { filing: Filing }) {
     </div>
   );
 }
+
+function ListingPanel({ filing }: { filing: Filing }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const kind = filing.kind as "client_listing" | "ic_statement";
+  const year = Number(filing.periodKey.slice(0, 4));
+  const quarter = Number(filing.periodKey.match(/Q(\d)/)?.[1] ?? 0);
+
+  const prepare = useMutation({
+    ...trpc.filings.prepareListing.mutationOptions(),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() }),
+  });
+  const submit = useMutation({
+    ...trpc.filings.submitListing.mutationOptions(),
+    onSuccess: () => {
+      setConfirming(false);
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() });
+    },
+  });
+
+  const data = filing.data as
+    | {
+        rows?: Array<{
+          customerName: string;
+          vatNumber: string;
+          countryCode?: string;
+          code?: string;
+          turnover?: number;
+          amount?: number;
+        }>;
+        turnoverSum?: number;
+        amountSum?: number;
+        warnings?: string[];
+      }
+    | null
+    | undefined;
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={prepare.isPending}
+        onClick={() =>
+          prepare.mutate({
+            filingId: filing.id,
+            kind,
+            year,
+            ...(quarter ? { quarter } : {}),
+          })
+        }
+      >
+        {prepare.isPending
+          ? "Building…"
+          : data?.rows
+            ? "Rebuild"
+            : kind === "client_listing"
+              ? "Build the client listing"
+              : "Build the IC statement"}
+      </Button>
+
+      {data?.rows && data.rows.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {data.rows.map((r) => (
+            <div
+              key={`${r.vatNumber}-${r.customerName}`}
+              className="flex items-baseline gap-2 text-sm"
+            >
+              <span>{r.customerName}</span>
+              <span className="font-mono text-xs text-[#878787]">
+                {r.countryCode ? `${r.countryCode} ` : ""}
+                {r.vatNumber}
+                {r.code ? ` · ${r.code}` : ""}
+              </span>
+              <span className="ml-auto font-mono tabular-nums">
+                {eurFmt.format(r.turnover ?? r.amount ?? 0)}
+              </span>
+            </div>
+          ))}
+          <div className="flex justify-between border-t border-border pt-2 text-sm">
+            <span>Total</span>
+            <span className="font-mono tabular-nums">
+              {eurFmt.format(data.turnoverSum ?? data.amountSum ?? 0)}
+            </span>
+          </div>
+        </div>
+      )}
+      {data?.rows && data.rows.length === 0 && (
+        <p className="mt-3 text-sm text-[#878787]">
+          Nothing to report for this period.
+        </p>
+      )}
+
+      {data?.warnings?.map((w) => (
+        <p key={w} className="mt-2 text-xs text-amber-600">
+          {w}
+        </p>
+      ))}
+
+      {data?.rows &&
+        data.rows.length > 0 &&
+        filing.status !== "filed" &&
+        (confirming ? (
+          <div className="mt-3 space-y-2">
+            <p className="text-sm">
+              This files with FOD Financiën and cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={submit.isPending}
+                onClick={() =>
+                  submit.mutate({
+                    filingId: filing.id,
+                    kind,
+                    confirm: true,
+                    env: "prod",
+                  })
+                }
+              >
+                {submit.isPending ? "Submitting…" : "Yes, submit to Intervat"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => setConfirming(true)}
+          >
+            Submit to Intervat
+          </Button>
+        ))}
+      {submit.error && (
+        <p className="mt-2 text-xs text-red-600">{submit.error.message}</p>
+      )}
+    </div>
+  );
+}
+
 export function FilingsContent() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -684,6 +835,9 @@ export function FilingsContent() {
                 {f.kind === "personal_tax" && <PersonalTaxPanel filing={f} />}
                 {f.kind === "annual_accounts" && (
                   <AnnualAccountsPanel filing={f} />
+                )}
+                {(f.kind === "client_listing" || f.kind === "ic_statement") && (
+                  <ListingPanel filing={f} />
                 )}
                 {(f.kind === "social_contribution" ||
                   f.kind === "advance_payment") && <PaymentPanel filing={f} />}
