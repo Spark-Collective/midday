@@ -57,7 +57,10 @@ export {
   getOwnerSummary,
   linkDirectorAccounts,
   listDirectors,
+  listResidences,
+  municipalityForIncomeYear,
   type OwnerSummary,
+  type ResidenceRow,
 } from "./owner.js";
 export {
   buildPersonalTaxPack,
@@ -83,6 +86,10 @@ export {
   type PostEntryResult,
   postEntry,
 } from "./post.js";
+export {
+  type PostExpenseNoteInput,
+  postExpenseNote,
+} from "./post-expense-note.js";
 export { type PostInvoiceInput, postInvoice } from "./post-invoice.js";
 export {
   type PostTransactionInput,
@@ -143,4 +150,3 @@ export {
   type VatPeriod,
   type VatReturnResult,
 } from "./vat-return.js";
-export { postExpenseNote, type PostExpenseNoteInput } from "./post-expense-note.js";

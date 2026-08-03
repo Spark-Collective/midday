@@ -344,3 +344,82 @@ export async function listDirectors(
     glAccountCode: row.gl_account_code,
   }));
 }
+
+/**
+ * The municipality whose surcharge applies to an income year.
+ *
+ * Belgian rule: the aanvullende gemeentebelasting follows the municipality of
+ * residence on **1 January of the ASSESSMENT year** (income year + 1) — not the
+ * current address, and not where the income was earned.
+ *
+ * Verified against a real assessment: a taxpayer who moved in April 2025 was
+ * still taxed at their old municipality's rate for income 2024, because on
+ * 1 January 2025 they had not yet moved.
+ *
+ * Falls back to `directors.municipality` when no residence history exists, so a
+ * director who has never moved needs no extra data entry.
+ */
+export async function municipalityForIncomeYear(
+  client: { query: PoolClient["query"] },
+  input: { teamId: string; directorId: string; incomeYear: number },
+): Promise<{
+  municipality: string | null;
+  referenceDate: string;
+  source: "residence_history" | "director_default" | "none";
+}> {
+  const referenceDate = `${input.incomeYear + 1}-01-01`;
+  const r = await client.query(
+    `SELECT municipality FROM director_residences
+      WHERE team_id = $1 AND director_id = $2
+        AND from_date <= $3::date
+        AND (to_date IS NULL OR to_date > $3::date)
+      LIMIT 1`,
+    [input.teamId, input.directorId, referenceDate],
+  );
+  if ((r.rowCount ?? 0) > 0) {
+    return {
+      municipality: r.rows[0].municipality as string,
+      referenceDate,
+      source: "residence_history",
+    };
+  }
+  const d = await client.query(
+    `SELECT municipality FROM directors WHERE id = $1 AND team_id = $2`,
+    [input.directorId, input.teamId],
+  );
+  const fallback = (d.rows[0]?.municipality as string | null) ?? null;
+  return {
+    municipality: fallback,
+    referenceDate,
+    source: fallback ? "director_default" : "none",
+  };
+}
+
+export type ResidenceRow = {
+  id: string;
+  municipality: string;
+  fromDate: string;
+  toDate: string | null;
+  note: string | null;
+};
+
+export async function listResidences(
+  client: { query: PoolClient["query"] },
+  input: { teamId: string; directorId: string },
+): Promise<ResidenceRow[]> {
+  const r = await client.query(
+    `SELECT id, municipality, from_date::text AS from_date,
+            to_date::text AS to_date, note
+       FROM director_residences
+      WHERE team_id = $1 AND director_id = $2
+      ORDER BY from_date`,
+    [input.teamId, input.directorId],
+  );
+  return r.rows.map((row) => ({
+    id: row.id,
+    municipality: row.municipality,
+    fromDate: row.from_date,
+    toDate: row.to_date,
+    note: row.note,
+  }));
+}

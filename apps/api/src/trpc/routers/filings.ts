@@ -8,6 +8,7 @@ import {
   generateFilings,
   listFilings,
   markFiled,
+  municipalityForIncomeYear,
   resolvePitValues,
   setFilingData,
   setStep,
@@ -145,17 +146,20 @@ export const filingsRouter = createTRPCRouter({
         incomeYear: input.incomeYear,
       });
 
-      const dir = await pool().query(
-        "SELECT municipality FROM directors WHERE id = $1 AND team_id = $2",
-        [input.directorId, teamId],
-      );
-      const municipality = (dir.rows[0]?.municipality as string | null) ?? "";
+      // The municipal surcharge follows residence on 1 Jan of the ASSESSMENT
+      // year, not the current address (see municipalityForIncomeYear).
+      const residence = await municipalityForIncomeYear(pool(), {
+        teamId: teamId!,
+        directorId: input.directorId,
+        incomeYear: input.incomeYear,
+      });
+      const municipality = residence.municipality ?? "";
 
       let computation: ReturnType<typeof computePersonalTax> | null = null;
       let parameterGaps: string[] = [];
       if (!municipality) {
         parameterGaps = [
-          "The director has no municipality set. The municipal surcharge cannot be resolved, so the tax cannot be computed.",
+          `No municipality known for ${residence.referenceDate} (residence on 1 January of the assessment year decides the municipal surcharge). Add the director's residence history under Owner.`,
         ];
       } else {
         const resolved = await resolvePitValues(
@@ -165,7 +169,8 @@ export const filingsRouter = createTRPCRouter({
         );
         if (resolved.missing.length > 0) {
           parameterGaps = resolved.missing.map(
-            (k: string) => `Missing tax parameter for ${input.incomeYear}: ${k}`,
+            (k: string) =>
+              `Missing tax parameter for ${input.incomeYear}: ${k}`,
           );
         } else {
           const params = toPitParameters(
@@ -189,7 +194,13 @@ export const filingsRouter = createTRPCRouter({
         }
       }
 
-      const payload = { pack, computation, parameterGaps, municipality };
+      const payload = {
+        pack,
+        computation,
+        parameterGaps,
+        municipality,
+        residence,
+      };
       await withClient((c) =>
         setFilingData(c, {
           teamId: teamId!,
