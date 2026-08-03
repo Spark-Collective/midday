@@ -519,15 +519,21 @@ function PersonalTaxPanel({ filing }: { filing: Filing }) {
 function MarkFiledBox({ filing }: { filing: Filing }) {
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [ref, setRef] = useState("");
+  // null = closed, "filed" = recording a reference, "skipped" = recording a reason.
+  const [mode, setMode] = useState<null | "filed" | "skipped">(null);
+  const [text, setText] = useState("");
+  const done = () => {
+    setMode(null);
+    setText("");
+    qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() });
+  };
   const mark = useMutation({
     ...trpc.filings.markFiled.mutationOptions(),
-    onSuccess: () => {
-      setOpen(false);
-      setRef("");
-      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() });
-    },
+    onSuccess: done,
+  });
+  const skip = useMutation({
+    ...trpc.filings.skip.mutationOptions(),
+    onSuccess: done,
   });
 
   if (filing.status === "filed" || filing.status === "confirmed") {
@@ -538,38 +544,62 @@ function MarkFiledBox({ filing }: { filing: Filing }) {
     );
   }
 
+  if (filing.status === "skipped") {
+    return (
+      <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+        Not required · {filing.externalRef}
+      </p>
+    );
+  }
+
+  const pending = mark.isPending || skip.isPending;
+  const error = mark.error ?? skip.error;
+
   return (
     <div className="mt-3 border-t border-border pt-3">
-      {open ? (
+      {mode ? (
         <div className="flex flex-wrap items-center gap-2">
           <input
             className="h-9 w-72 border border-border bg-background px-3 text-sm"
-            placeholder="Reference, deposit number or payment date"
-            value={ref}
-            onChange={(e) => setRef(e.target.value)}
+            placeholder={
+              mode === "filed"
+                ? "Reference, deposit number or payment date"
+                : "Why this period does not apply"
+            }
+            value={text}
+            onChange={(e) => setText(e.target.value)}
           />
           <Button
             variant="outline"
             size="sm"
-            disabled={!ref.trim() || mark.isPending}
+            disabled={!text.trim() || pending}
             onClick={() =>
-              mark.mutate({ filingId: filing.id, externalRef: ref.trim() })
+              mode === "filed"
+                ? mark.mutate({ filingId: filing.id, externalRef: text.trim() })
+                : skip.mutate({ filingId: filing.id, reason: text.trim() })
             }
           >
-            {mark.isPending ? "Saving…" : "Record as filed"}
+            {pending
+              ? "Saving…"
+              : mode === "filed"
+                ? "Record as filed"
+                : "Record as not required"}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+          <Button variant="ghost" size="sm" onClick={() => setMode(null)}>
             Cancel
           </Button>
         </div>
       ) : (
-        <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-          I filed this myself
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setMode("filed")}>
+            I filed this myself
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setMode("skipped")}>
+            Not required
+          </Button>
+        </div>
       )}
-      {mark.error && (
-        <p className="mt-2 text-xs text-red-600">{mark.error.message}</p>
-      )}
+      {error && <p className="mt-2 text-xs text-red-600">{error.message}</p>}
     </div>
   );
 }

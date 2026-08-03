@@ -11,6 +11,7 @@ import {
   listFilings,
   markFiled,
   setStep,
+  skipFiling,
 } from "../src/filings.js";
 import {
   getTaxParameter,
@@ -45,34 +46,59 @@ describe("deadline rules (C1)", () => {
 
   test("quarterly VAT is due the 25th of the month after the quarter", () => {
     // Intervat technical documentation v14/07/2026 §7.
-    expect(computeDueDate("vat_return", 2026, "2026Q1", profile)).toBe("2026-04-25");
-    expect(computeDueDate("vat_return", 2026, "2026Q3", profile)).toBe("2026-10-25");
+    expect(computeDueDate("vat_return", 2026, "2026Q1", profile)).toBe(
+      "2026-04-25",
+    );
+    expect(computeDueDate("vat_return", 2026, "2026Q3", profile)).toBe(
+      "2026-10-25",
+    );
     // Q4 rolls into the next year.
-    expect(computeDueDate("vat_return", 2026, "2026Q4", profile)).toBe("2027-01-25");
+    expect(computeDueDate("vat_return", 2026, "2026Q4", profile)).toBe(
+      "2027-01-25",
+    );
   });
 
   test("monthly VAT is due the 20th of the following month", () => {
     const monthly = { ...profile, vatRegime: "monthly" as const };
-    expect(computeDueDate("vat_return", 2026, "2026M07", monthly)).toBe("2026-08-20");
-    expect(computeDueDate("vat_return", 2026, "2026M12", monthly)).toBe("2027-01-20");
+    expect(computeDueDate("vat_return", 2026, "2026M07", monthly)).toBe(
+      "2026-08-20",
+    );
+    expect(computeDueDate("vat_return", 2026, "2026M12", monthly)).toBe(
+      "2027-01-20",
+    );
   });
 
   test("advance payments follow 10/04, 10/07, 10/10, 20/12", () => {
     const days = [1, 2, 3, 4].map((q) =>
       computeDueDate("advance_payment", 2026, `2026Q${q}`, profile),
     );
-    expect(days).toEqual(["2026-04-10", "2026-07-10", "2026-10-10", "2026-12-20"]);
+    expect(days).toEqual([
+      "2026-04-10",
+      "2026-07-10",
+      "2026-10-10",
+      "2026-12-20",
+    ]);
   });
 
   test("social contributions are due at the end of each quarter", () => {
-    expect(computeDueDate("social_contribution", 2026, "2026Q1", profile)).toBe("2026-03-31");
-    expect(computeDueDate("social_contribution", 2026, "2026Q4", profile)).toBe("2026-12-31");
+    expect(computeDueDate("social_contribution", 2026, "2026Q1", profile)).toBe(
+      "2026-03-31",
+    );
+    expect(computeDueDate("social_contribution", 2026, "2026Q4", profile)).toBe(
+      "2026-12-31",
+    );
   });
 
   test("annual obligations land after the financial year closes", () => {
-    expect(computeDueDate("client_listing", 2026, "2026", profile)).toBe("2027-03-31");
-    expect(computeDueDate("annual_accounts", 2026, "2026", profile)).toBe("2027-07-31");
-    expect(computeDueDate("personal_tax", 2026, "2026", profile)).toBe("2027-07-15");
+    expect(computeDueDate("client_listing", 2026, "2026", profile)).toBe(
+      "2027-03-31",
+    );
+    expect(computeDueDate("annual_accounts", 2026, "2026", profile)).toBe(
+      "2027-07-31",
+    );
+    expect(computeDueDate("personal_tax", 2026, "2026", profile)).toBe(
+      "2027-07-15",
+    );
   });
 });
 
@@ -100,7 +126,9 @@ describe("filing generation (C1)", () => {
     // sorted by due date: the first advance payment (10 Apr) precedes VAT Q1 (25 Apr)
     expect(rows[0]?.dueDate).toBe("2026-03-31");
     expect(rows.every((r) => r.status === "not_started")).toBe(true);
-    expect(rows.find((r) => r.kind === "personal_tax")?.directorName).toBe("Test Director");
+    expect(rows.find((r) => r.kind === "personal_tax")?.directorName).toBe(
+      "Test Director",
+    );
   });
 
   test("a second director gets their own personal-tax filing", async () => {
@@ -130,7 +158,9 @@ describe("filing generation (C1)", () => {
         skip: ["ic_statement", "advance_payment"],
       },
     });
-    const kinds = (await listFilings(db, { teamId, year: 2027 })).map((r) => r.kind);
+    const kinds = (await listFilings(db, { teamId, year: 2027 })).map(
+      (r) => r.kind,
+    );
     expect(kinds).not.toContain("ic_statement");
     expect(kinds).not.toContain("advance_payment");
     expect(res.created).toBe(11);
@@ -154,8 +184,20 @@ describe("workflow progress (C1)", () => {
     expect(a.status).toBe("in_progress");
     expect(a.steps.find((s) => s.key === "completeness")?.doneAt).toBeTruthy();
 
-    for (const key of ["grids", "probability", "xml", "submit", "proof", "pay"]) {
-      await setStep(db, { teamId, filingId: vat.id, stepKey: key, status: "done" });
+    for (const key of [
+      "grids",
+      "probability",
+      "xml",
+      "submit",
+      "proof",
+      "pay",
+    ]) {
+      await setStep(db, {
+        teamId,
+        filingId: vat.id,
+        stepKey: key,
+        status: "done",
+      });
     }
     const all = await listFilings(db, { teamId, year: 2026 });
     expect(all.find((r) => r.id === vat.id)?.status).toBe("ready_for_review");
@@ -166,7 +208,12 @@ describe("workflow progress (C1)", () => {
       (r) => r.kind === "vat_return" && r.periodKey === "2026Q1",
     )!;
     await expectError(
-      setStep(db, { teamId, filingId: vat.id, stepKey: "nope", status: "done" }),
+      setStep(db, {
+        teamId,
+        filingId: vat.id,
+        stepKey: "nope",
+        status: "done",
+      }),
       /not in this filing/,
     );
   });
@@ -185,7 +232,9 @@ describe("workflow progress (C1)", () => {
       externalRef: "dd346737-f0fc-4bb2-8609-52713653b154",
       artifacts: [{ label: "Intervat proof (PDF)", reference: "dd346737" }],
     });
-    const after = (await listFilings(db, { teamId, year: 2026 })).find((r) => r.id === vat.id)!;
+    const after = (await listFilings(db, { teamId, year: 2026 })).find(
+      (r) => r.id === vat.id,
+    )!;
     expect(after.status).toBe("filed");
     expect(after.filedAt).toBeTruthy();
 
@@ -198,12 +247,40 @@ describe("workflow progress (C1)", () => {
     });
     expect(rolled.status).toBe("filed");
   });
+
+  test("'skipped' also demands a reason, and stops counting as overdue", async () => {
+    const ic = (await listFilings(db, { teamId, year: 2026 })).find(
+      (r) => r.kind === "ic_statement" && r.periodKey === "2026Q1",
+    )!;
+    await expectError(
+      skipFiling(db, { teamId, filingId: ic.id, reason: " " }),
+      /needs a reason/,
+    );
+    await skipFiling(db, {
+      teamId,
+      filingId: ic.id,
+      reason: "No intra-Community supplies in this quarter.",
+    });
+    const after = (await listFilings(db, { teamId, year: 2026 })).find(
+      (r) => r.id === ic.id,
+    )!;
+    expect(after.status).toBe("skipped");
+    expect(after.externalRef).toContain("No intra-Community");
+    // A skipped obligation was never filed: no false filing date.
+    expect(after.filedAt).toBeFalsy();
+  });
 });
 
 describe("Intervat probability rules (C2)", () => {
   test("a clean return trips nothing", () => {
     // 1000 revenue at 21%: grid 03 = 1000, 54 = 210, 71 = 210.
-    expect(checkVatProbabilityRules({ "03": "1000.00", "54": "210.00", "71": "210.00" })).toEqual([]);
+    expect(
+      checkVatProbabilityRules({
+        "03": "1000.00",
+        "54": "210.00",
+        "71": "210.00",
+      }),
+    ).toEqual([]);
   });
 
   test("rule 4 catches the scenario we filed in ACC (86/88 without 55)", () => {
@@ -217,7 +294,9 @@ describe("Intervat probability rules (C2)", () => {
     expect(w.map((x) => x.code)).toContain("W_TVA_GRID_54O_INCORRECT_VALUE");
     // ...but a small rounding difference stays under the tolerance.
     expect(
-      checkVatProbabilityRules({ "03": "1000.00", "54": "150.00" }).map((x) => x.code),
+      checkVatProbabilityRules({ "03": "1000.00", "54": "150.00" }).map(
+        (x) => x.code,
+      ),
     ).not.toContain("W_TVA_GRID_54O_INCORRECT_VALUE");
   });
 
@@ -233,12 +312,17 @@ describe("Intervat probability rules (C2)", () => {
     expect(w.map((x) => x.code)).toContain("W_TVA_GRID_59_INCORRECT_VALUE");
     // TEST = 2.900 is under 3.000 and under 100.000 -> no warning.
     expect(
-      checkVatProbabilityRules({ "81": "10000.00", "59": "5000.00" }).map((x) => x.code),
+      checkVatProbabilityRules({ "81": "10000.00", "59": "5000.00" }).map(
+        (x) => x.code,
+      ),
     ).not.toContain("W_TVA_GRID_59_INCORRECT_VALUE");
   });
 
   test("every warning carries the code Intervat expects and the rule that fired", () => {
-    for (const w of checkVatProbabilityRules({ "86": "1000.00", "87": "1000.00" })) {
+    for (const w of checkVatProbabilityRules({
+      "86": "1000.00",
+      "87": "1000.00",
+    })) {
       expect(w.code).toMatch(/^W_/);
       expect(w.rule.length).toBeGreaterThan(0);
       expect(w.message.length).toBeGreaterThan(0);
@@ -251,7 +335,11 @@ describe("tax parameters (C1)", () => {
     const { inserted } = await seedTaxParameters(db);
     expect(inserted).toBeGreaterThan(0);
 
-    const threshold = await getTaxParameter(db, 2026, "reduced_rate_min_remuneration");
+    const threshold = await getTaxParameter(
+      db,
+      2026,
+      "reduced_rate_min_remuneration",
+    );
     expect(threshold.value).toBe(45000);
     // Seeded from the KB, never checked against the authority: must read as stale.
     expect(threshold.verifiedOn).toBeNull();
@@ -271,9 +359,15 @@ describe("tax parameters (C1)", () => {
     );
     const second = await seedTaxParameters(db);
     expect(second.inserted).toBe(0);
-    const after = await getTaxParameter(db, 2026, "reduced_rate_min_remuneration");
+    const after = await getTaxParameter(
+      db,
+      2026,
+      "reduced_rate_min_remuneration",
+    );
     expect(after.verifiedOn).toBe("2026-08-01"); // human verification survives re-seeding
     expect(after.stale).toBe(false);
-    expect((await listTaxParameters(db, 2026)).length).toBeGreaterThanOrEqual(4);
+    expect((await listTaxParameters(db, 2026)).length).toBeGreaterThanOrEqual(
+      4,
+    );
   });
 });

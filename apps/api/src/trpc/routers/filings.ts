@@ -20,6 +20,7 @@ import {
   resolvePitValues,
   setFilingData,
   setStep,
+  skipFiling,
   toPitParameters,
   type VatPeriod,
 } from "@midday/ledger";
@@ -109,6 +110,13 @@ export const filingsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx: { teamId }, input }) =>
       withClient((c) => setStep(c, { teamId: teamId!, ...input })),
+    ),
+
+  /** "This obligation does not apply for this period" - with a reason. */
+  skip: protectedProcedure
+    .input(z.object({ filingId: z.string().uuid(), reason: z.string().min(1) }))
+    .mutation(async ({ ctx: { teamId }, input }) =>
+      withClient((c) => skipFiling(c, { teamId: teamId!, ...input })),
     ),
 
   markFiled: protectedProcedure

@@ -358,6 +358,31 @@ export async function setStep(
 }
 
 /** Record a real submission. Status only becomes 'filed' with evidence. */
+/**
+ * Close an obligation that never applied: an IC statement in a quarter with no
+ * intra-Community supplies, a VAT return for a period before registration.
+ * Distinct from `filed`, and it demands a reason for the same reason `markFiled`
+ * demands evidence: "not required" is a claim, and a year from now someone will
+ * want to know who decided that and why.
+ */
+export async function skipFiling(
+  client: PoolClient,
+  input: { teamId: string; filingId: string; reason: string },
+): Promise<void> {
+  if (!input.reason?.trim()) {
+    throw new LedgerError(
+      "skipFiling needs a reason: why this obligation does not apply for this period",
+    );
+  }
+  const r = await client.query(
+    `UPDATE filings SET status = 'skipped', external_ref = $1
+      WHERE id = $2 AND team_id = $3`,
+    [input.reason.trim(), input.filingId, input.teamId],
+  );
+  if (r.rowCount === 0)
+    throw new LedgerError(`filing ${input.filingId} not found`);
+}
+
 export async function markFiled(
   client: PoolClient,
   input: {

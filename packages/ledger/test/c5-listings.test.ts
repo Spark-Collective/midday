@@ -29,14 +29,23 @@ const DECLARANT: ListingDeclarant = {
   email: "test@example.be",
 };
 
-async function customer(name: string, vat: string | null, country: string | null) {
+async function customer(
+  name: string,
+  vat: string | null,
+  country: string | null,
+) {
   const r = await db.query(
     `INSERT INTO customers (team_id, name, vat_number, country) VALUES ($1,$2,$3,$4) RETURNING id`,
     [teamId, name, vat, country],
   );
   return r.rows[0].id as string;
 }
-async function invoice(customerId: string, date: string, amount: number, vat: number) {
+async function invoice(
+  customerId: string,
+  date: string,
+  amount: number,
+  vat: number,
+) {
   await db.query(
     `INSERT INTO invoices (team_id, customer_id, amount, vat, currency, issue_date, status)
      VALUES ($1,$2,$3,$4,'EUR',$5,'paid')`,
@@ -60,6 +69,7 @@ beforeAll(async () => {
   const noVat = await customer("Belgian No VAT", null, "BE");
   const dutch = await customer("Dutch Client", "NL123456782B01", "NL");
   const french = await customer("French Client", "FR12345678901", "FR");
+  const offshore = await customer("Offshore Client", "MH999999", "MH");
 
   // 2025: two BE invoices (one large, one under threshold), plus intra-EU.
   await invoice(big, "2025-03-10", 12100, 2100); // 10.000 excl.
@@ -67,6 +77,7 @@ beforeAll(async () => {
   await invoice(noVat, "2025-06-10", 6050, 1050); // 5.000 excl, no VAT number
   await invoice(dutch, "2025-02-10", 5000, 0); // Q1 intra-EU
   await invoice(french, "2025-05-10", 3000, 0); // Q2 intra-EU
+  await invoice(offshore, "2025-02-10", 9000, 0); // Q1, NOT EU
 });
 
 afterAll(async () => {
@@ -76,7 +87,11 @@ afterAll(async () => {
 
 describe("client listing (lc)", () => {
   test("includes Belgian customers above the threshold only", async () => {
-    const r = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
+    const r = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
     const names = r.rows.map((x) => x.customerName);
     expect(names).toContain("Big BE Client");
     // 100 excl. VAT is under the 250 threshold.
@@ -86,7 +101,11 @@ describe("client listing (lc)", () => {
   });
 
   test("turnover excludes VAT and the sums add up", async () => {
-    const r = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
+    const r = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
     const big = r.rows.find((x) => x.customerName === "Big BE Client");
     expect(big?.turnover).toBe(10000);
     expect(big?.vatAmount).toBe(2100);
@@ -94,27 +113,43 @@ describe("client listing (lc)", () => {
   });
 
   test("a Belgian VAT number is normalised to 10 digits", async () => {
-    const r = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
-    expect(r.rows.find((x) => x.customerName === "Big BE Client")?.vatNumber).toBe(
-      "0123456749",
-    );
+    const r = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
+    expect(
+      r.rows.find((x) => x.customerName === "Big BE Client")?.vatNumber,
+    ).toBe("0123456749");
   });
 
   test("a customer without a usable VAT number WARNS instead of vanishing", async () => {
-    const r = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
+    const r = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
     expect(r.rows.some((x) => x.customerName === "Belgian No VAT")).toBe(false);
     expect(r.warnings.join(" ")).toContain("Belgian No VAT");
     expect(r.warnings.join(" ")).toContain("missing from the listing");
   });
 
   test("an empty year still warns rather than silently producing nothing", async () => {
-    const r = await buildClientListing(db, { teamId, year: 2019, threshold: 250 });
+    const r = await buildClientListing(db, {
+      teamId,
+      year: 2019,
+      threshold: 250,
+    });
     expect(r.rows.length).toBe(0);
     expect(r.warnings.join(" ")).toContain("nil listing");
   });
 
   test("XML carries the declarant, totals and one Client per row", async () => {
-    const listing = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
+    const listing = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
     const xml = buildClientListingXml({ declarant: DECLARANT, listing });
     expect(xml).toContain("ClientListingConsignment");
     expect(xml).toContain('ClientsNbr="1"');
@@ -125,7 +160,11 @@ describe("client listing (lc)", () => {
   });
 
   test("a corrective listing carries the replaced reference", async () => {
-    const listing = await buildClientListing(db, { teamId, year: 2025, threshold: 250 });
+    const listing = await buildClientListing(db, {
+      teamId,
+      year: 2025,
+      threshold: 250,
+    });
     const xml = buildClientListingXml({
       declarant: DECLARANT,
       listing,
@@ -149,6 +188,15 @@ describe("IC statement (ico)", () => {
     expect(q2.rows.some((r) => r.countryCode === "BE")).toBe(false);
   });
 
+  test("a non-EU customer is excluded and explained, not filed as intra-EU", async () => {
+    const q1 = await buildIcStatement(db, { teamId, year: 2025, quarter: 1 });
+    expect(q1.rows.some((r) => r.countryCode === "MH")).toBe(false);
+    expect(q1.warnings.join(" ")).toContain("Offshore Client");
+    expect(q1.warnings.join(" ")).toContain("outside the EU");
+    // ...and its 9.000 must not inflate the total.
+    expect(q1.amountSum).toBe(5000);
+  });
+
   test("the country prefix is split off the VAT number", async () => {
     const q1 = await buildIcStatement(db, { teamId, year: 2025, quarter: 1 });
     expect(q1.rows[0]?.countryCode).toBe("NL");
@@ -169,7 +217,11 @@ describe("IC statement (ico)", () => {
   });
 
   test("XML carries the period and one IntraClient per row", async () => {
-    const statement = await buildIcStatement(db, { teamId, year: 2025, quarter: 1 });
+    const statement = await buildIcStatement(db, {
+      teamId,
+      year: 2025,
+      quarter: 1,
+    });
     const xml = buildIcStatementXml({ declarant: DECLARANT, statement });
     expect(xml).toContain("IntraConsignment");
     expect(xml).toContain('AmountSum="5000.00"');
@@ -180,7 +232,11 @@ describe("IC statement (ico)", () => {
   });
 
   test("a month period renders Month, not Quarter", async () => {
-    const statement = await buildIcStatement(db, { teamId, year: 2025, month: 2 });
+    const statement = await buildIcStatement(db, {
+      teamId,
+      year: 2025,
+      month: 2,
+    });
     const xml = buildIcStatementXml({ declarant: DECLARANT, statement });
     expect(xml).toContain("<ns2:Month>2</ns2:Month>");
     expect(xml).not.toContain("<ns2:Quarter>");

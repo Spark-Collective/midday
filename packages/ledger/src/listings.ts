@@ -42,6 +42,40 @@ export type ClientListingResult = {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * EU member states, excluding BE. The IC statement covers INTRA-EU supplies only:
+ * treating "any country that is not Belgium" as intra-EU would put a Marshall
+ * Islands or US customer on the statement, which is wrong and visible to FPS.
+ */
+const EU_EXCL_BE = new Set([
+  "AT",
+  "BG",
+  "CY",
+  "CZ",
+  "DE",
+  "DK",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GR",
+  "HR",
+  "HU",
+  "IE",
+  "IT",
+  "LT",
+  "LU",
+  "LV",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SE",
+  "SI",
+  "SK",
+]);
+
 /** Normalise a Belgian VAT number to the 10 digits the XSD wants. */
 function beVat(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
@@ -249,10 +283,18 @@ export async function buildIcStatement(
   for (const row of r.rows) {
     const raw = ((row.vat_number as string) ?? "").trim().toUpperCase();
     const m = raw.match(/^([A-Z]{2})\s*(.+)$/);
-    const country = m?.[1] ?? (row.country as string | null)?.toUpperCase() ?? "";
+    const country =
+      m?.[1] ?? (row.country as string | null)?.toUpperCase() ?? "";
     const number = (m?.[2] ?? raw).replace(/[^A-Z0-9]/g, "");
-    // Belgian customers belong on the client listing, not here.
+    // Belgian customers belong on the client listing; non-EU customers belong
+    // on neither (an export is not an intra-Community supply).
     if (!country || country === "BE") continue;
+    if (!EU_EXCL_BE.has(country)) {
+      warnings.push(
+        `${row.customer_name} (${country}) is outside the EU, so it is not an intra-Community supply and is excluded from this statement.`,
+      );
+      continue;
+    }
     const amount = r2(Number(row.amount ?? 0));
     if (amount === 0) continue;
     rows.push({
