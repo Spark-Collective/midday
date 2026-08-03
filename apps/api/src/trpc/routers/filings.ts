@@ -1,11 +1,14 @@
 import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
+  buildAnnualAccountsXbrl,
   buildPersonalTaxPack,
   checkVatProbabilityRules,
   computePersonalTax,
   computeVatGrids,
   generateFilings,
+  generateVatReturn,
+  getAnnualAccounts,
   listFilings,
   markFiled,
   municipalityForIncomeYear,
@@ -15,6 +18,14 @@ import {
   toPitParameters,
   type VatPeriod,
 } from "@midday/ledger";
+import {
+  API_BASE,
+  credsFromEnv,
+  isFresh,
+  type MinfinEnv,
+  refreshToken,
+  submitVat,
+} from "@midday/minfin";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
@@ -209,5 +220,226 @@ export const filingsRouter = createTRPCRouter({
         }),
       );
       return payload;
+    }),
+
+  /**
+   * Annual accounts: run the NBB micro-model mapping and the Balanscentrale
+   * arithmetic controls, and attach the filing-ready XBRL instance.
+   *
+   * A refused deposit is the expensive failure mode, so failing controls are
+   * returned as BLOCKING and the instance is withheld until they pass.
+   */
+  prepareAnnualAccounts: protectedProcedure
+    .input(
+      z.object({
+        filingId: z.string().uuid(),
+        year: z.number().int().min(2000).max(2100),
+        compareYear: z.number().int().min(2000).max(2100).optional(),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const aa = await getAnnualAccounts(pool(), {
+        teamId: teamId!,
+        year: input.year,
+        compareYear: input.compareYear,
+      });
+      const failed = aa.checks.filter((c) => !c.ok);
+      const enterpriseNumber = (process.env.LEDGER_VAT_NUMBER ?? "").replace(
+        /\D/g,
+        "",
+      );
+
+      let xbrl: { xml?: string; filename?: string } | null = null;
+      const blocking = failed.map((c) => `${c.name}: ${c.detail}`);
+      if (!enterpriseNumber) {
+        blocking.push(
+          "LEDGER_VAT_NUMBER is not configured, so no XBRL instance can be built.",
+        );
+      } else if (failed.length === 0) {
+        const built = buildAnnualAccountsXbrl({
+          declarant: {
+            enterpriseNumber,
+            name: process.env.LEDGER_COMPANY_NAME ?? "",
+          },
+          closingDate: `${input.year}-12-31`,
+          previousClosingDate: input.compareYear
+            ? `${input.compareYear}-12-31`
+            : undefined,
+          values: aa.values,
+        });
+        xbrl = { xml: built.xml, filename: built.filename };
+      }
+
+      const payload = {
+        year: input.year,
+        checks: aa.checks,
+        blocking,
+        rubrieken: aa.values,
+        xbrlFilename: xbrl?.filename ?? null,
+        // The instance itself can be large; keep it on the filing so the operator
+        // can download exactly what was checked.
+        xbrl: xbrl?.xml ?? null,
+        note: "Depositing the accounts stays a human act on filing.cbso.nbb.be.",
+      };
+      await withClient((c) =>
+        setFilingData(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          data: payload,
+        }),
+      );
+      return {
+        ...payload,
+        // Do not ship the whole instance back through the mutation response.
+        xbrl: xbrl ? "(stored on the filing)" : null,
+      };
+    }),
+
+  /**
+   * Submit a periodic VAT return to Intervat, from the app.
+   *
+   * This is a REAL, irreversible filing to the tax authority, so it is gated on
+   * an explicit confirm and refuses when the probability pre-check has unresolved
+   * warnings — Intervat would reject those anyway, and a rejected submission is
+   * more confusing than a blocked one.
+   */
+  submitVat: protectedProcedure
+    .input(
+      z.object({
+        filingId: z.string().uuid(),
+        year: z.number().int(),
+        quarter: z.number().int().min(1).max(4).optional(),
+        month: z.number().int().min(1).max(12).optional(),
+        confirm: z.literal(true),
+        env: z.enum(["test", "prod"]).default("prod"),
+        askRestitution: z.enum(["YES", "NO"]).default("NO"),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) => {
+      const vatNumber = (process.env.LEDGER_VAT_NUMBER ?? "").replace(
+        /\D/g,
+        "",
+      );
+      if (!vatNumber) throw new Error("LEDGER_VAT_NUMBER not configured");
+      const creds = credsFromEnv();
+      const env = input.env as MinfinEnv;
+
+      // Refuse to file something Intervat will bounce.
+      const period: VatPeriod = input.quarter
+        ? { year: input.year, quarter: input.quarter }
+        : { year: input.year, month: input.month };
+      const { grids } = await computeVatGrids(pool(), {
+        teamId: teamId!,
+        period,
+      });
+      const probability = checkVatProbabilityRules(grids);
+      if (probability.length > 0) {
+        throw new Error(
+          `Intervat would require a justification for: ${probability
+            .map((p) => p.code)
+            .join(", ")}. Resolve the probability warnings before submitting.`,
+        );
+      }
+
+      const built = await generateVatReturn(pool(), {
+        teamId: teamId!,
+        period,
+        declarant: {
+          vatNumber,
+          name: process.env.LEDGER_COMPANY_NAME ?? "",
+          street: process.env.LEDGER_COMPANY_STREET ?? "",
+          postCode: process.env.LEDGER_COMPANY_POSTCODE ?? "",
+          city: process.env.LEDGER_COMPANY_CITY ?? "",
+          countryCode: "BE",
+          email: process.env.LEDGER_COMPANY_EMAIL ?? "",
+        },
+        askRestitution: input.askRestitution,
+      });
+
+      // Token: refresh when stale, and PERSIST the rotated refresh token before
+      // using it — losing it would cost a browser consent with an eID.
+      const client = await pool().connect();
+      let accessToken: string;
+      try {
+        const row = await client.query(
+          `SELECT refresh_token, access_token, expires_in, obtained_at
+             FROM minfin_tokens WHERE team_id = $1 AND env = $2 FOR UPDATE`,
+          [teamId, env],
+        );
+        if (row.rowCount === 0) {
+          throw new Error(
+            `No MinFin token stored for '${env}'. Run the browser consent once and seed it before submitting from the app.`,
+          );
+        }
+        const cur = row.rows[0];
+        if (
+          cur.access_token &&
+          isFresh({
+            obtained_at: Number(cur.obtained_at ?? 0),
+            expires_in: Number(cur.expires_in ?? 0),
+          })
+        ) {
+          accessToken = cur.access_token as string;
+        } else {
+          const t = await refreshToken({
+            env,
+            creds,
+            refreshToken: cur.refresh_token as string,
+          });
+          await client.query(
+            `UPDATE minfin_tokens
+                SET refresh_token = $1, access_token = $2, expires_in = $3,
+                    obtained_at = $4, scope = $5, updated_at = now()
+              WHERE team_id = $6 AND env = $7`,
+            [
+              t.refresh_token,
+              t.access_token,
+              t.expires_in,
+              t.obtained_at,
+              t.scope ?? null,
+              teamId,
+              env,
+            ],
+          );
+          accessToken = t.access_token;
+        }
+      } finally {
+        client.release();
+      }
+
+      const periodLabel = input.quarter
+        ? `${input.year}Q${input.quarter}`
+        : `${input.year}M${String(input.month).padStart(2, "0")}`;
+      const ref = await submitVat({
+        apiBase: API_BASE[env],
+        accessToken,
+        vatNumber,
+        content: Buffer.from(built.xml, "utf8"),
+        filename: `vat-${periodLabel}.xml`,
+        lang: "nl",
+      });
+
+      await withClient(async (c) => {
+        await setFilingData(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          data: {
+            grids: built.grids,
+            warnings: built.warnings,
+            probability: [],
+            submitted: ref,
+          },
+        });
+        await markFiled(c, {
+          teamId: teamId!,
+          filingId: input.filingId,
+          externalRef: ref.xmlReference,
+          artifacts: [
+            { label: "Intervat proof (PDF)", reference: ref.pdfReference },
+            { label: "Intervat proof (XML)", reference: ref.xmlReference },
+          ],
+        });
+      });
+      return ref;
     }),
 });

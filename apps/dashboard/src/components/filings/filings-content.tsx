@@ -128,6 +128,14 @@ function VatPanel({ filing }: { filing: Filing }) {
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() }),
   });
+  const [confirming, setConfirming] = useState(false);
+  const submit = useMutation({
+    ...trpc.filings.submitVat.mutationOptions(),
+    onSuccess: () => {
+      setConfirming(false);
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() });
+    },
+  });
   const quarter = Number(filing.periodKey.match(/Q(\d)/)?.[1] ?? 0);
   const year = Number(filing.periodKey.slice(0, 4));
   const grids = filing.data?.grids;
@@ -190,6 +198,146 @@ function VatPanel({ filing }: { filing: Filing }) {
         <p className="mt-3 text-xs text-green-600">
           No probability warnings. Intervat should accept this without
           justification.
+        </p>
+      )}
+
+      {grids && Object.keys(grids).length > 0 && filing.status !== "filed" && (
+        <div className="mt-4 border-t border-border pt-3">
+          {confirming ? (
+            <div className="space-y-2">
+              <p className="text-sm">
+                This files the {periodLabel(filing.periodKey)} VAT return with
+                FOD Financiën. It cannot be undone; a mistake needs a corrective
+                return.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={submit.isPending}
+                  onClick={() =>
+                    submit.mutate({
+                      filingId: filing.id,
+                      year,
+                      ...(quarter
+                        ? { quarter }
+                        : { month: Number(filing.periodKey.slice(5)) }),
+                      confirm: true,
+                      env: "prod",
+                      askRestitution: "NO",
+                    })
+                  }
+                >
+                  {submit.isPending ? "Submitting…" : "Yes, submit to Intervat"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirming(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={probability.length > 0}
+              onClick={() => setConfirming(true)}
+            >
+              Submit to Intervat
+            </Button>
+          )}
+          {probability.length > 0 && (
+            <p className="mt-2 text-xs text-[#878787]">
+              Resolve the warnings above first — Intervat would reject this.
+            </p>
+          )}
+          {submit.error && (
+            <p className="mt-2 text-xs text-red-600">{submit.error.message}</p>
+          )}
+        </div>
+      )}
+
+      {filing.status === "filed" && filing.externalRef && (
+        <p className="mt-3 font-mono text-xs text-green-600">
+          Filed · proof {filing.externalRef}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AnnualAccountsPanel({ filing }: { filing: Filing }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const prepare = useMutation({
+    ...trpc.filings.prepareAnnualAccounts.mutationOptions(),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() }),
+  });
+  const year = Number(filing.periodKey.slice(0, 4));
+  const data = filing.data as
+    | {
+        checks?: Array<{ name: string; ok: boolean; detail: string }>;
+        blocking?: string[];
+        xbrlFilename?: string | null;
+      }
+    | null
+    | undefined;
+  const failed = (data?.checks ?? []).filter((c) => !c.ok);
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={prepare.isPending}
+        onClick={() => prepare.mutate({ filingId: filing.id, year })}
+      >
+        {prepare.isPending
+          ? "Mapping…"
+          : data?.checks
+            ? "Re-run mapping + controls"
+            : "Map to the NBB model"}
+      </Button>
+
+      {data?.checks && (
+        <p className="mt-3 text-sm">
+          {failed.length === 0 ? (
+            <span className="text-green-600">
+              All {data.checks.length} Balanscentrale controls pass.
+            </span>
+          ) : (
+            <span className="text-red-600">
+              {failed.length} of {data.checks.length} controls fail — a deposit
+              would be refused.
+            </span>
+          )}
+        </p>
+      )}
+
+      {failed.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {failed.map((c) => (
+            <p key={c.name} className="text-xs text-red-600">
+              {c.name}: {c.detail}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {data?.xbrlFilename && (
+        <p className="mt-3 text-xs text-[#878787]">
+          XBRL instance ready:{" "}
+          <span className="font-mono">{data.xbrlFilename}</span>. Deposit it
+          yourself on filing.cbso.nbb.be.
+        </p>
+      )}
+      {data?.blocking && data.blocking.length > 0 && !data.xbrlFilename && (
+        <p className="mt-2 text-xs text-amber-600">
+          No instance built while controls fail.
         </p>
       )}
     </div>
@@ -449,6 +597,9 @@ export function FilingsContent() {
               <div className="px-4 pb-4">
                 {f.kind === "vat_return" && <VatPanel filing={f} />}
                 {f.kind === "personal_tax" && <PersonalTaxPanel filing={f} />}
+                {f.kind === "annual_accounts" && (
+                  <AnnualAccountsPanel filing={f} />
+                )}
                 <StepList filing={f} />
               </div>
             )}

@@ -1,0 +1,4 @@
+{
+  "extends": "@midday/tsconfig/base.json",
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

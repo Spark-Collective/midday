@@ -71,7 +71,8 @@
     "toolpick": "0.4.0",
     "uuid": "catalog:",
     "zod": "catalog:",
-    "@midday/ledger": "workspace:*"
+    "@midday/ledger": "workspace:*",
+    "@midday/minfin": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

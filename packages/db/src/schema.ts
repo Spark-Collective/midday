@@ -4706,7 +4706,6 @@ export const reconciliationAllocations = pgTable(
   ],
 );
 
-
 export const ledgerLinesRelations = relations(ledgerLines, ({ one }) => ({
   entry: one(journalEntries, {
     fields: [ledgerLines.entryId],
@@ -4961,5 +4960,71 @@ export const expenseNoteLines = pgTable(
       table.expenseNoteId,
       table.position,
     ),
+  ],
+);
+
+// Director residence history (migration 0041). The municipal surcharge follows
+// residence on 1 January of the ASSESSMENT year, so a single municipality field
+// is wrong for anyone who has moved.
+export const directorResidences = pgTable(
+  "director_residences",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    directorId: uuid("director_id")
+      .notNull()
+      .references(() => directors.id, { onDelete: "cascade" }),
+    municipality: text().notNull(),
+    fromDate: date("from_date").notNull(),
+    toDate: date("to_date"),
+    note: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("director_residences_lookup_idx").on(
+      table.teamId,
+      table.directorId,
+      table.fromDate,
+    ),
+    pgPolicy("Team members can manage director residences", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)`,
+    }),
+  ],
+);
+
+// Server-side MinFin OAuth tokens (migration 0042). Single-use refresh tokens:
+// exactly one holder may refresh a given environment.
+export const minfinTokens = pgTable(
+  "minfin_tokens",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    env: text().notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    accessToken: text("access_token"),
+    expiresIn: integer("expires_in"),
+    obtainedAt: bigint("obtained_at", { mode: "number" }),
+    scope: text(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("minfin_tokens_team_env_unique").on(table.teamId, table.env),
+    pgPolicy("Team members can manage minfin tokens", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user)`,
+    }),
   ],
 );
