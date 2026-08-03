@@ -73,8 +73,13 @@ export async function refreshToken(input: {
   });
   const res = await fetch(tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
+    // Accept: application/json is NOT optional. Without it FPS answers with an
+    // HTML error page instead of a JSON error, which reads like a mystery 400.
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      Accept: "application/json",
+    },
+    body: body.toString(),
   });
   const raw = await res.text();
   if (!res.ok) {
