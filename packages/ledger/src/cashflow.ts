@@ -102,64 +102,115 @@ export async function getPaymentLagDays(
 }
 
 /**
- * A filing's due date is a fact; its amount usually is not yet. Prefer the
- * prepared figure, fall back to what this obligation has historically cost.
+ * What each obligation has historically cost in CASH, learned from the account
+ * it settles against. The filings table itself is the wrong place to learn this
+ * from: a prepared VAT return stores its grids, not a single figure, and most
+ * obligations are never "prepared" in the app at all. The ledger, by contrast,
+ * has the actual payments.
+ */
+const FILING_COST_ACCOUNT: Record<string, string> = {
+  social_contribution: "social_contributions_paid",
+  advance_payment: "advance_tax_payment",
+  vat_return: "vat_current_account",
+  corporate_tax: "corporate_tax_payable",
+};
+
+/**
+ * A filing's due date is a fact; its amount usually is not yet.
  *
- * ponytail: one trailing-average estimator for every filing kind, rather than
- * six bespoke ones. VAT is lumpy and this will be wrong on a quarter with an
- * unusual purchase; upgrade to a per-kind estimator (VAT from the quarter's
- * ledger to date, social contributions from the fund's schedule) when the error
- * measured against the snapshots justifies it.
+ * Order of preference: the prepared figure (VAT grid 71 payable / 72
+ * refundable), then the average of what this obligation has actually cost over
+ * the last year. Neither available means the amount is genuinely unknown, and
+ * the caller says so rather than the curve quietly omitting a tax bill.
+ *
+ * ponytail: a flat average of the last year's payments, not a model. VAT is
+ * lumpy and this will be wrong on a quarter with an unusual purchase; the
+ * monthly snapshots are what will eventually say whether that matters.
  */
 async function filingOutflows(
   client: PoolClient,
   teamId: string,
   from: string,
   to: string,
-): Promise<CashLine[]> {
-  const r = await client.query(
-    `WITH history AS (
-       SELECT f.kind,
-              avg(abs((f.data ->> 'amountDue')::numeric)) AS avg_amount
-         FROM filings f
-        WHERE f.team_id = $1
-          AND f.data ? 'amountDue'
-          AND (f.data ->> 'amountDue') ~ '^-?[0-9.]+$'
-        GROUP BY f.kind
+): Promise<{ lines: CashLine[]; unknown: string[] }> {
+  const history = await client.query(
+    `WITH payments AS (
+       SELECT a.system_key AS key, je.id AS entry_id, sum(ll.debit) AS amt
+         FROM ledger_lines ll
+         JOIN journal_entries je ON je.id = ll.entry_id AND je.status = 'posted'
+         JOIN gl_accounts a ON a.id = ll.account_id
+        WHERE ll.team_id = $1
+          AND a.system_key = ANY($2::text[])
+          AND je.date >= ($3::date - interval '365 days')
+          AND ll.debit > 0
+        GROUP BY 1, 2
      )
-     SELECT f.id, f.kind, f.period_key, f.due_date::text AS due_date,
-            (f.data ->> 'amountDue') AS prepared,
-            h.avg_amount::float8 AS avg_amount
-       FROM filings f
-       LEFT JOIN history h ON h.kind = f.kind
-      WHERE f.team_id = $1
-        AND f.due_date >= $2::date AND f.due_date <= $3::date
-        AND f.status NOT IN ('filed', 'confirmed', 'skipped')
-      ORDER BY f.due_date`,
+     SELECT key, avg(amt)::float8 AS avg_amount FROM payments GROUP BY key`,
+    [teamId, Object.values(FILING_COST_ACCOUNT), from],
+  );
+  const avgByAccount = new Map<string, number>(
+    history.rows.map((r) => [r.key as string, Number(r.avg_amount)]),
+  );
+
+  const r = await client.query(
+    `SELECT id, kind, period_key, due_date::text AS due_date,
+            (data -> 'grids' ->> '71') AS vat_payable,
+            (data -> 'grids' ->> '72') AS vat_refundable
+       FROM filings
+      WHERE team_id = $1
+        AND due_date >= $2::date AND due_date <= $3::date
+        AND status NOT IN ('filed', 'confirmed', 'skipped')
+      ORDER BY due_date`,
     [teamId, from, to],
   );
 
   const lines: CashLine[] = [];
+  const unknown: string[] = [];
   for (const row of r.rows) {
-    const prepared =
-      row.prepared !== null && /^-?[0-9.]+$/.test(String(row.prepared))
-        ? Number(row.prepared)
-        : null;
-    const amount = prepared ?? (row.avg_amount ? Number(row.avg_amount) : null);
-    // No prepared figure and no history: the date is real but the amount is
-    // unknowable. Skipping it silently would understate the outflow, so it is
-    // surfaced as a warning by the caller instead of guessed at here.
-    if (amount === null || amount === 0) continue;
+    const label = `${String(row.kind).replace(/_/g, " ")} ${row.period_key}`;
+
+    // A prepared VAT return knows exactly which way the money goes.
+    const payable = num(row.vat_payable);
+    const refundable = num(row.vat_refundable);
+    if (payable !== null || refundable !== null) {
+      const signed = payable !== null ? -payable : (refundable ?? 0);
+      if (signed !== 0) {
+        lines.push({
+          date: row.due_date,
+          amount: r2(signed),
+          kind: "filing",
+          label,
+          sourceId: row.id,
+          estimated: false,
+        });
+      }
+      continue;
+    }
+
+    const account = FILING_COST_ACCOUNT[String(row.kind)];
+    const avg = account ? avgByAccount.get(account) : undefined;
+    if (!avg) {
+      // Listings and annual accounts cost nothing to file, so silence is right
+      // for them. A payment obligation with no history is not.
+      if (account) unknown.push(label);
+      continue;
+    }
     lines.push({
       date: row.due_date,
-      amount: -Math.abs(r2(amount)),
+      amount: -Math.abs(r2(avg)),
       kind: "filing",
-      label: `${String(row.kind).replace(/_/g, " ")} ${row.period_key}`,
+      label,
       sourceId: row.id,
-      estimated: prepared === null,
+      estimated: true,
     });
   }
-  return lines;
+  return { lines, unknown };
+}
+
+function num(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
 /**
@@ -349,7 +400,13 @@ export async function buildCashForecast(
   }
 
   // --- tax and social outflows --------------------------------------------
-  lines.push(...(await filingOutflows(client, input.teamId, asOf, horizonEnd)));
+  const filings = await filingOutflows(client, input.teamId, asOf, horizonEnd);
+  lines.push(...filings.lines);
+  if (filings.unknown.length > 0) {
+    warnings.push(
+      `No amount known yet for ${filings.unknown.join(", ")}. Those payments are NOT in this curve, so it reads better than reality.`,
+    );
+  }
 
   // --- baseline operating spend -------------------------------------------
   const runRate = await runRateMonthly(client, input.teamId, asOf);
@@ -400,6 +457,15 @@ export async function buildCashForecast(
     // the first bucket, not dropped. Anything past the horizon is out of scope.
     if (b) b.lines.push(line);
     else if (line.date < asOf) buckets[0]?.lines.push(line);
+  }
+
+  // A curve with no expected income is not a forecast of the business, it is a
+  // forecast of its costs. Saying so is the difference between a useful warning
+  // and a frightening, meaningless number.
+  if (!lines.some((l) => l.amount > 0)) {
+    warnings.push(
+      "No expected income is recorded, so this curve shows money leaving only. Add expected invoice dates to your landed work.",
+    );
   }
 
   let balance = openingBalance;

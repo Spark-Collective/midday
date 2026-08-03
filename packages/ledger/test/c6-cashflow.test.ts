@@ -11,6 +11,7 @@ import {
   getPaymentLagDays,
   snapshotCashForecast,
 } from "../src/cashflow.js";
+import { seedBelgianLedger } from "../src/seed.js";
 import { initTestDb, TEST_DB_URL } from "./helpers/setup.js";
 
 const pool = new Pool({ connectionString: TEST_DB_URL });
@@ -52,9 +53,60 @@ async function invoice(opts: {
   return r.rows[0].id as string;
 }
 
+/** A posted cash payment against the account carrying `systemKey`. */
+async function seedPayment(
+  client: PoolClient,
+  team: string,
+  systemKey: string,
+  date: string,
+  amount: number,
+) {
+  await client.query(
+    `INSERT INTO gl_accounts (team_id, code, name, type, system_key)
+     VALUES ($1, $2, $3, 'expense', $4)
+     ON CONFLICT ON CONSTRAINT gl_accounts_team_code_unique DO NOTHING`,
+    [team, `T${systemKey.slice(0, 5)}`, systemKey, systemKey],
+  );
+  const period = await client.query(
+    `SELECT id FROM fiscal_periods
+      WHERE team_id = $1 AND year = EXTRACT(YEAR FROM $2::date)
+        AND month = EXTRACT(MONTH FROM $2::date)`,
+    [team, date],
+  );
+  const journal = await client.query(
+    `SELECT id FROM journals WHERE team_id = $1 LIMIT 1`,
+    [team],
+  );
+  // Entries are created draft and posted afterwards: a trigger enforces it.
+  const entry = await client.query(
+    `INSERT INTO journal_entries (team_id, journal_id, date, period_id)
+     VALUES ($1,$2,$3::date,$4) RETURNING id`,
+    [team, journal.rows[0].id, date, period.rows[0].id],
+  );
+  const id = entry.rows[0].id;
+  for (const [key, debit, credit] of [
+    [systemKey, amount, 0],
+    ["internal_transfers", 0, amount],
+  ] as Array<[string, number, number]>) {
+    await client.query(
+      `INSERT INTO ledger_lines (team_id, entry_id, account_id, debit, credit, currency, amount_currency)
+       SELECT $1, $2, id, $3, $4, 'EUR', $5
+         FROM gl_accounts WHERE team_id = $1 AND system_key = $6`,
+      [team, id, debit, credit, debit > 0 ? debit : -credit, key],
+    );
+  }
+  await client.query(
+    `UPDATE journal_entries SET status = 'posted', posted_at = now() WHERE id = $1`,
+    [id],
+  );
+}
+
 beforeAll(async () => {
   db = await pool.connect();
   teamId = await initTestDb(db);
+  await db.query("BEGIN");
+  await seedBelgianLedger(db, { teamId, years: [2026] });
+  await db.query("COMMIT");
 
   await account("KBC", 3000);
   await account("Revolut", 500);
@@ -290,8 +342,8 @@ describe("outflows", () => {
   test("an unfiled obligation is an outflow on its due date; a filed one is not", async () => {
     await db.query(
       `INSERT INTO filings (team_id, kind, period_year, period_key, due_date, data)
-       VALUES ($1,'vat_return',2026,'2026Q3','2026-10-25','{"amountDue":"4100.00"}'::jsonb),
-              ($1,'vat_return',2026,'2026Q2','2026-07-25','{"amountDue":"3000.00"}'::jsonb)`,
+       VALUES ($1,'vat_return',2026,'2026Q3','2026-10-25','{"grids":{"71":"4100.00"}}'::jsonb),
+              ($1,'vat_return',2026,'2026Q2','2026-07-25','{"grids":{"71":"3000.00"}}'::jsonb)`,
       [teamId],
     );
     await db.query(
@@ -315,24 +367,84 @@ describe("outflows", () => {
     expect(filings[0]?.estimated).toBe(false);
   });
 
-  test("an obligation with no prepared amount is estimated from its own history", async () => {
+  test("a prepared VAT REFUND is an inflow, not an outflow", async () => {
     await db.query(
-      `INSERT INTO filings (team_id, kind, period_year, period_key, due_date)
-       VALUES ($1,'vat_return',2026,'2026Q4','2027-01-25')`,
+      `INSERT INTO filings (team_id, kind, period_year, period_key, due_date, data)
+       VALUES ($1,'vat_return',2026,'2026M09','2026-10-20','{"grids":{"72":"800.00"}}'::jsonb)`,
       [teamId],
     );
     const f = await buildCashForecast(db, {
       teamId,
       asOf: ASOF,
       weeks: 13,
-      months: 12,
+      months: 6,
+    });
+    const refund = f.buckets
+      .flatMap((b) => b.lines)
+      .find((l) => l.label.includes("2026M09"));
+    expect(refund?.amount).toBe(800);
+    await db.query(
+      "DELETE FROM filings WHERE period_key = '2026M09' AND team_id = $1",
+      [teamId],
+    );
+  });
+
+  test("an unprepared obligation is estimated from what it has actually cost", async () => {
+    await seedPayment(
+      db,
+      teamId,
+      "social_contributions_paid",
+      "2026-04-26",
+      2595.06,
+    );
+    await seedPayment(
+      db,
+      teamId,
+      "social_contributions_paid",
+      "2026-07-12",
+      1280.04,
+    );
+    await db.query(
+      `INSERT INTO filings (team_id, kind, period_year, period_key, due_date)
+       VALUES ($1,'social_contribution',2026,'2026Q4','2026-12-31')`,
+      [teamId],
+    );
+    const f = await buildCashForecast(db, {
+      teamId,
+      asOf: ASOF,
+      weeks: 13,
+      months: 6,
     });
     const q4 = f.buckets
       .flatMap((b) => b.lines)
-      .find((l) => l.label.includes("2026Q4"));
-    // Average of the two known VAT amounts, and honestly flagged.
-    expect(q4?.amount).toBe(-3550);
+      .find((l) => l.label.includes("social contribution 2026Q4"));
+    expect(q4?.amount).toBeCloseTo(-1937.55, 2);
     expect(q4?.estimated).toBe(true);
+  });
+
+  test("an obligation with no amount and no history is NOT silently omitted", async () => {
+    await db.query(
+      `INSERT INTO filings (team_id, kind, period_year, period_key, due_date)
+       VALUES ($1,'corporate_tax',2026,'2026','2026-11-30')`,
+      [teamId],
+    );
+    const f = await buildCashForecast(db, {
+      teamId,
+      asOf: ASOF,
+      weeks: 13,
+      months: 6,
+    });
+    expect(
+      f.buckets
+        .flatMap((b) => b.lines)
+        .some((l) => l.label.includes("corporate tax")),
+    ).toBe(false);
+    expect(f.warnings.join(" ")).toContain("corporate tax 2026");
+    expect(f.warnings.join(" ")).toContain("reads better than reality");
+    await db.query(
+      "DELETE FROM filings WHERE kind = 'corporate_tax' AND team_id = $1",
+      [teamId],
+    );
   });
 
   test("running costs come from actual spend, excluding what the filings already cover", async () => {
