@@ -65,6 +65,7 @@ function DueBadge({ due, status }: { due: string; status: string }) {
 type Filing = {
   id: string;
   kind: string;
+  directorId?: string | null;
   periodKey: string;
   dueDate: string;
   status: string;
@@ -195,6 +196,172 @@ function VatPanel({ filing }: { filing: Filing }) {
   );
 }
 
+const eurFmt = new Intl.NumberFormat("nl-BE", {
+  style: "currency",
+  currency: "EUR",
+});
+
+function PersonalTaxPanel({ filing }: { filing: Filing }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const { data: directors } = useQuery(trpc.owner.directors.queryOptions());
+  const prepare = useMutation({
+    ...trpc.filings.preparePersonalTax.mutationOptions(),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() }),
+  });
+
+  const incomeYear = Number(filing.periodKey.slice(0, 4));
+  const directorId =
+    filing.directorId ?? (directors?.[0]?.id as string | undefined);
+  const data = filing.data as
+    | {
+        pack?: {
+          lines?: Array<{
+            vak: string;
+            code: string;
+            label: string;
+            amount: number;
+            source: string;
+          }>;
+          gaps?: string[];
+        };
+        computation?: {
+          steps: Array<{ label: string; amount: number; note?: string }>;
+          balance: number;
+          averageRatePct: number;
+          verified: boolean;
+          warnings: string[];
+        } | null;
+        parameterGaps?: string[];
+      }
+    | null
+    | undefined;
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={prepare.isPending || !directorId}
+        onClick={() =>
+          directorId &&
+          prepare.mutate({ filingId: filing.id, directorId, incomeYear })
+        }
+      >
+        {prepare.isPending
+          ? "Preparing…"
+          : data?.pack
+            ? "Recompute return"
+            : "Prepare return"}
+      </Button>
+      {!directorId && (
+        <p className="mt-2 text-xs text-[#878787]">
+          No director on this team yet. Add one under Owner.
+        </p>
+      )}
+
+      {data?.pack?.lines && data.pack.lines.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 text-xs text-[#878787]">
+            Assembled from your books (income {incomeYear})
+          </p>
+          <div className="space-y-1">
+            {data.pack.lines.map((l) => (
+              <div
+                key={`${l.code}-${l.label}`}
+                className="flex items-baseline gap-2 text-sm"
+              >
+                <span className="font-mono text-xs text-[#878787]">
+                  {l.vak} · {l.code}
+                </span>
+                <span>{l.label}</span>
+                <span className="ml-auto font-mono tabular-nums">
+                  {eurFmt.format(l.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data?.computation && (
+        <div className="mt-4 border border-border p-3">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <span className="text-sm">Computation</span>
+            {!data.computation.verified && (
+              <span className="text-xs text-amber-600">
+                unverified parameters — estimate
+              </span>
+            )}
+          </div>
+          <div className="space-y-1">
+            {data.computation.steps.map((st) => (
+              <div key={st.label} className="flex items-baseline gap-2 text-sm">
+                <span
+                  className={
+                    st.label.startsWith("Te betalen") ||
+                    st.label.startsWith("Terug")
+                      ? ""
+                      : "text-[#878787]"
+                  }
+                >
+                  {st.label}
+                </span>
+                {st.note && (
+                  <span className="font-mono text-xs text-[#878787]">
+                    {st.note}
+                  </span>
+                )}
+                <span className="ml-auto font-mono tabular-nums">
+                  {eurFmt.format(st.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-[#878787]">
+            Average rate {data.computation.averageRatePct}% · lay this beside
+            the official assessment before filing.
+          </p>
+          {data.computation.warnings.map((w) => (
+            <p key={w} className="mt-2 text-xs text-amber-600">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {data?.parameterGaps && data.parameterGaps.length > 0 && (
+        <div className="mt-3 border border-amber-600/40 bg-amber-600/5 p-3">
+          <p className="text-xs text-amber-700 dark:text-amber-500">
+            No tax computed — the parameter set is incomplete:
+          </p>
+          {data.parameterGaps.map((g) => (
+            <p key={g} className="mt-1 text-xs text-[#878787]">
+              {g}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {data?.pack?.gaps && data.pack.gaps.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {data.pack.gaps.map((g) => (
+            <p key={g} className="text-xs text-[#878787]">
+              · {g}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <p className="mt-3 text-xs text-[#878787]">
+        There is no API for the personal return: file it yourself in Tax-on-web
+        using these figures.
+      </p>
+    </div>
+  );
+}
+
 export function FilingsContent() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -281,6 +448,7 @@ export function FilingsContent() {
             {openId === f.id && (
               <div className="px-4 pb-4">
                 {f.kind === "vat_return" && <VatPanel filing={f} />}
+                {f.kind === "personal_tax" && <PersonalTaxPanel filing={f} />}
                 <StepList filing={f} />
               </div>
             )}
