@@ -326,7 +326,9 @@ function operatingLines(
 }
 
 function humanise(slug: string): string {
-  if (slug === UNCATEGORISED) return "Uncategorised";
+  // Midday also ships a category literally named "uncategorized", so this label
+  // has to be visibly different from it or the two read as one duplicated row.
+  if (slug === UNCATEGORISED) return "No category";
   return slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 

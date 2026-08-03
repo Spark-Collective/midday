@@ -154,6 +154,18 @@ describe("budget against actual", () => {
     expect(training?.variance).toBeNull();
     expect(r.rows.some((x) => x.categorySlug === "internal")).toBe(false);
     expect(r.rows.some((x) => x.categorySlug === UNCATEGORISED)).toBe(true);
+    // The sentinel must not read as Midday's own "uncategorized" category.
+    const f = await buildCashForecast(db, {
+      teamId,
+      asOf: ASOF,
+      weeks: 1,
+      months: 0,
+    });
+    expect(
+      f.buckets
+        .flatMap((b) => b.lines)
+        .some((l) => l.label === "Uncategorised"),
+    ).toBe(false);
   });
 
   test("variance is negative when over budget", async () => {

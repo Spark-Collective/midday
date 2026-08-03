@@ -457,7 +457,10 @@ function BudgetRowEditor({
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-2 last:border-b-0">
       <div className="min-w-0 flex-1">
         <span className="truncate text-sm">
-          {row.categoryName ?? row.categorySlug.replace(/-/g, " ")}
+          {row.categoryName ??
+            (row.categorySlug === "__uncategorised__"
+              ? "No category"
+              : row.categorySlug.replace(/-/g, " "))}
         </span>
       </div>
       <span className="w-20 text-right font-mono text-xs text-muted-foreground">
