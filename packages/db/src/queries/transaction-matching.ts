@@ -587,21 +587,40 @@ function computeDeclinePenalty(
 
 const AUTO_MATCH_ENABLED = process.env.MATCH_AUTO_ENABLED === "true";
 
+/**
+ * Amount floor for the confident tiers. On a financial document the amount is
+ * the decisive signal, and a strong vendor name must not promote a wrong one.
+ *
+ * Real case: a Bolt invoice of 15.16 covering TWO rides (13.90 + 1.26) was
+ * offered as "high_confidence" against the 13.90 ride alone. Name 0.88 and
+ * date 0.85 carried the score to 0.742 while the amount scored just 0.6, and
+ * the confident label invited a one-click confirm of a wrong pairing.
+ *
+ * 0.85 admits everything calculateAmountScore treats as agreement: exact
+ * (1.0), within 1% (0.98), 2% (0.95) and 5% (0.85). A 10%-off pair scores 0.6
+ * and now degrades to "suggested", which the UI presents as needing judgement
+ * rather than confirmation.
+ */
+export const AUTO_MATCH_MIN_AMOUNT_SCORE = 0.85;
+
 function resolveMatchType(
   confidence: number,
   canAutoMatch: boolean,
   nameScore: number,
   autoThreshold: number,
+  amountScore: number,
 ): MatchType {
+  const amountAgrees = amountScore >= AUTO_MATCH_MIN_AMOUNT_SCORE;
   if (
     AUTO_MATCH_ENABLED &&
     confidence >= autoThreshold &&
     canAutoMatch &&
-    nameScore >= 0.4
+    nameScore >= 0.4 &&
+    amountAgrees
   ) {
     return "auto_matched";
   }
-  if (confidence >= 0.72) {
+  if (confidence >= 0.72 && amountAgrees) {
     return "high_confidence";
   }
   return "suggested";
@@ -814,6 +833,7 @@ export async function findMatches(
         pattern.canAutoMatch,
         nameScore,
         autoThreshold,
+        amountScore,
       ),
       isAlreadyMatched: false,
     };
@@ -1030,6 +1050,7 @@ export async function findInboxMatches(
         pattern.canAutoMatch,
         nameScore,
         autoThreshold,
+        amountScore,
       ),
       isAlreadyMatched: false,
     };
