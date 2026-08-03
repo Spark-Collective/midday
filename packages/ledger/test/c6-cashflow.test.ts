@@ -463,8 +463,9 @@ describe("outflows", () => {
       months: 0,
     });
     const runRate = f.buckets[0]?.lines.find((l) => l.kind === "run_rate");
-    // 900 over 90 days = 300/month; a week is 300 * 7 / 30.44.
-    expect(runRate?.amount).toBeCloseTo(-69, 0);
+    // 900 over 90 days = 300/month, spread across the ACTUAL month: a 7-day
+    // bucket in a 31-day August is 300 * 7 / 31, not 300 * 7 / 30.44.
+    expect(runRate?.amount).toBeCloseTo(-67.74, 1);
     // Inflows must never be mistaken for spend.
     expect(runRate?.amount).toBeLessThan(0);
   });

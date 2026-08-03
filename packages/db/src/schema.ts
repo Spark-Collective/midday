@@ -4801,6 +4801,40 @@ export const directors = pgTable(
   ],
 );
 
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    categorySlug: text("category_slug").notNull(),
+    /** 'YYYY-MM'. Monthly only: a cash forecast wants money in the month it leaves. */
+    periodKey: text("period_key").notNull(),
+    amount: numericCasted({ precision: 14, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("budgets_team_period_idx").on(table.teamId, table.periodKey),
+    unique("budgets_team_category_period_unique").on(
+      table.teamId,
+      table.categorySlug,
+      table.periodKey,
+    ),
+    pgPolicy("Team members can manage budgets", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+).enableRLS();
+
 export const cashForecastSnapshots = pgTable(
   "cash_forecast_snapshots",
   {

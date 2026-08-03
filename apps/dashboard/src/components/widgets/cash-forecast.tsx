@@ -19,7 +19,7 @@ import { formatAmount } from "@/utils/format";
 type CashLine = {
   date: string;
   amount: number;
-  kind: "invoice" | "project" | "filing" | "run_rate";
+  kind: "invoice" | "project" | "filing" | "budget" | "run_rate";
   label: string;
   sourceId: string | null;
   estimated: boolean;
@@ -39,8 +39,27 @@ const KIND_LABEL: Record<CashLine["kind"], string> = {
   invoice: "Invoice",
   project: "Landed work",
   filing: "Tax and social",
+  budget: "Budgeted",
   run_rate: "Running costs",
 };
+
+const VIEWS = [
+  { key: "upcoming", label: "Upcoming" },
+  { key: "landed", label: "Landed work" },
+  { key: "budget", label: "Budget" },
+] as const;
+type View = (typeof VIEWS)[number]["key"];
+
+function thisMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonth(month: string, by: number) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y as number, (m as number) - 1 + by, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
 function shortDate(d: string) {
   return new Date(`${d}T00:00:00`).toLocaleDateString(undefined, {
@@ -56,7 +75,7 @@ export function CashForecast() {
   const { data, isLoading } = useQuery(
     trpc.cashflow.forecast.queryOptions({ weeks: 13, months: 6 }),
   );
-  const [showLanded, setShowLanded] = useState(false);
+  const [view, setView] = useState<View>("upcoming");
 
   if (isLoading || !data) {
     return <div className="mt-6 h-[260px] border border-border" />;
@@ -104,13 +123,21 @@ export function CashForecast() {
             </span>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowLanded((v) => !v)}
-        >
-          {showLanded ? "Hide landed work" : "Landed work"}
-        </Button>
+        <div className="flex items-center gap-1">
+          {VIEWS.map((v) => (
+            <Button
+              key={v.key}
+              variant="ghost"
+              size="sm"
+              className={
+                view === v.key ? "text-foreground" : "text-muted-foreground"
+              }
+              onClick={() => setView(v.key)}
+            >
+              {v.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <div className="h-[180px] w-full px-2 pt-4">
@@ -152,8 +179,10 @@ export function CashForecast() {
         </ResponsiveContainer>
       </div>
 
-      {showLanded ? (
+      {view === "landed" ? (
         <LandedWork />
+      ) : view === "budget" ? (
+        <BudgetTable currency={data.currency} locale={locale} />
       ) : (
         <div className="border-t border-border">
           {upcoming.map((l) => (
@@ -308,6 +337,161 @@ function LandedRow({
         }
       >
         Save
+      </Button>
+    </div>
+  );
+}
+
+/** Planned spend against actual, for one month. */
+function BudgetTable({
+  currency,
+  locale,
+}: {
+  currency: string;
+  locale?: string | null;
+}) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const [month, setMonth] = useState(thisMonth());
+  const { data } = useQuery(trpc.cashflow.budget.queryOptions({ month }));
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: trpc.cashflow.budget.queryKey() });
+    qc.invalidateQueries({ queryKey: trpc.cashflow.forecast.queryKey() });
+  };
+  const save = useMutation({
+    ...trpc.cashflow.setBudget.mutationOptions(),
+    onSuccess: invalidate,
+  });
+  const copy = useMutation({
+    ...trpc.cashflow.copyBudgetForward.mutationOptions(),
+    onSuccess: invalidate,
+  });
+
+  const money = (n: number) =>
+    formatAmount({ amount: n, currency, maximumFractionDigits: 0, locale }) ??
+    String(n);
+
+  if (!data) return <div className="h-24 border-t border-border" />;
+
+  return (
+    <div className="border-t border-border">
+      <div className="flex items-center justify-between px-5 py-2">
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMonth((m) => shiftMonth(m, -1))}
+          >
+            ‹
+          </Button>
+          <span className="text-xs text-muted-foreground">{month}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMonth((m) => shiftMonth(m, 1))}
+          >
+            ›
+          </Button>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {money(data.actualTotal)} spent of {money(data.budgetTotal)} planned
+        </span>
+      </div>
+
+      {data.rows.map((row) => (
+        <BudgetRowEditor
+          key={row.categorySlug}
+          row={row}
+          money={money}
+          onSave={(amount) =>
+            save.mutate({
+              categorySlug: row.categorySlug,
+              month,
+              amount,
+            })
+          }
+          onCopy={() => copy.mutate({ categorySlug: row.categorySlug, month })}
+          busy={save.isPending || copy.isPending}
+        />
+      ))}
+      {data.rows.length === 0 && (
+        <p className="px-5 py-4 text-xs text-muted-foreground">
+          No spend and no budget in this month.
+        </p>
+      )}
+      {(save.error || copy.error) && (
+        <p className="px-5 py-2 text-xs text-red-600">
+          {(save.error ?? copy.error)?.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function BudgetRowEditor({
+  row,
+  money,
+  onSave,
+  onCopy,
+  busy,
+}: {
+  row: {
+    categorySlug: string;
+    categoryName: string | null;
+    budget: number | null;
+    actual: number;
+    variance: number | null;
+  };
+  money: (n: number) => string;
+  onSave: (amount: number | null) => void;
+  onCopy: () => void;
+  busy: boolean;
+}) {
+  const [value, setValue] = useState(
+    row.budget === null ? "" : String(row.budget),
+  );
+  const dirty = value !== (row.budget === null ? "" : String(row.budget));
+  const over = row.variance !== null && row.variance < 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-2 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <span className="truncate text-sm">
+          {row.categoryName ?? row.categorySlug.replace(/-/g, " ")}
+        </span>
+      </div>
+      <span className="w-20 text-right font-mono text-xs text-muted-foreground">
+        {money(row.actual)}
+      </span>
+      <span
+        className={`w-20 text-right font-mono text-xs ${over ? "text-red-600" : "text-muted-foreground"}`}
+      >
+        {row.variance === null ? "—" : money(row.variance)}
+      </span>
+      <input
+        type="number"
+        min={0}
+        placeholder="Budget"
+        className="h-9 w-24 border border-border bg-background px-2 text-sm"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!dirty || busy}
+        onClick={() => onSave(value === "" ? null : Number(value))}
+      >
+        Save
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={row.budget === null || busy}
+        title="Repeat this figure across the rest of the year"
+        onClick={onCopy}
+      >
+        Repeat
       </Button>
     </div>
   );

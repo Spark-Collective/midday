@@ -13,8 +13,18 @@
  * Design: docs/architecture/midday-cash-forecast-2026-08-03.md.
  */
 import type { PoolClient } from "pg";
+import {
+  getOperatingPlan,
+  type OperatingPlan,
+  UNCATEGORISED,
+} from "./budgets.js";
 
-export type CashLineKind = "invoice" | "project" | "filing" | "run_rate";
+export type CashLineKind =
+  | "invoice"
+  | "project"
+  | "filing"
+  | "budget"
+  | "run_rate";
 
 export type CashLine = {
   /** Expected CASH date, not the document date. */
@@ -213,44 +223,111 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) && n !== 0 ? n : null;
 }
 
-/**
- * Baseline operating spend, per month, from the last 90 days of actual cash out.
- *
- * `transactions.recurring` is unpopulated in practice, so recurrence detection
- * would be building a classifier to answer a question a trailing average already
- * answers. Tax and social payments are EXCLUDED because the filings calendar
- * forecasts those explicitly, and counting them in both places is the same
- * double-count the VAT rule above avoids.
- */
-async function runRateMonthly(
-  client: PoolClient,
-  teamId: string,
-  asOf: string,
-): Promise<{ amount: number; sampledFrom: string }> {
-  const since = addDays(asOf, -90);
-  const r = await client.query(
-    `SELECT COALESCE(sum(abs(t.amount)), 0)::float8 AS total
-       FROM transactions t
-      WHERE t.team_id = $1
-        AND t.date >= $2::date AND t.date < $3::date
-        AND t.amount < 0
-        AND t.status <> 'excluded'
-        AND NOT EXISTS (
-          SELECT 1
-            FROM journal_entries je
-            JOIN ledger_lines ll ON ll.entry_id = je.id
-            JOIN gl_accounts a ON a.id = ll.account_id
-           WHERE je.team_id = t.team_id
-             AND je.source_type = 'transaction' AND je.source_id = t.id
-             AND a.system_key IN ('social_contributions_paid',
-                                  'advance_tax_payment',
-                                  'corporate_tax_payable',
-                                  'vat_payable',
-                                  'vat_current_account')
-        )`,
-    [teamId, since, asOf],
+/** Whole days of overlap between [aStart,aEnd) and [bStart,bEnd). */
+function overlapDays(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): number {
+  const start = aStart > bStart ? aStart : bStart;
+  const end = aEnd < bEnd ? aEnd : bEnd;
+  if (start >= end) return 0;
+  return (
+    (new Date(`${end}T00:00:00Z`).getTime() -
+      new Date(`${start}T00:00:00Z`).getTime()) /
+    86400000
   );
-  return { amount: r2(Number(r.rows[0].total) / 3), sampledFrom: since };
+}
+
+/** First day of the month containing `date`, and of the month after it. */
+function monthBounds(date: string): {
+  key: string;
+  start: string;
+  end: string;
+} {
+  const d = new Date(`${date}T00:00:00Z`);
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+  return { key: iso(start).slice(0, 7), start: iso(start), end: iso(end) };
+}
+
+/**
+ * Operating spend for one bucket, category by category.
+ *
+ * For each category and each month the bucket touches: a budget for that month
+ * wins, otherwise the category's own 90-day trailing rate. That is the whole
+ * point of the budget layer, and it is also why the two can never be added
+ * together for the same category-month.
+ *
+ * Budgeted categories are emitted as their own lines so the curve says which
+ * numbers are intent and which are history; everything else is aggregated into
+ * one "Running costs" line, because a dozen sub-hundred-euro lines per week is
+ * noise, not traceability.
+ */
+function operatingLines(
+  bucketStart: string,
+  bucketEnd: string,
+  plan: OperatingPlan,
+): CashLine[] {
+  const categories = new Set<string>(plan.trailingByCategory.keys());
+  for (const key of plan.budgetByCategoryMonth.keys()) {
+    categories.add(key.split("|")[0] as string);
+  }
+
+  // Walk the months this bucket touches (a weekly bucket touches one or two).
+  const months: Array<{ key: string; start: string; end: string }> = [];
+  let cursor = bucketStart;
+  while (cursor < bucketEnd) {
+    const m = monthBounds(cursor);
+    months.push(m);
+    cursor = m.end;
+  }
+
+  const lines: CashLine[] = [];
+  let aggregated = 0;
+  for (const slug of categories) {
+    let budgeted = 0;
+    let trailing = 0;
+    for (const m of months) {
+      const days = overlapDays(bucketStart, bucketEnd, m.start, m.end);
+      if (days === 0) continue;
+      const daysInMonth = overlapDays(m.start, m.end, m.start, m.end);
+      const budget = plan.budgetByCategoryMonth.get(`${slug}|${m.key}`);
+      if (budget !== undefined) budgeted += (budget * days) / daysInMonth;
+      else
+        trailing +=
+          ((plan.trailingByCategory.get(slug) ?? 0) * days) / daysInMonth;
+    }
+    if (budgeted > 0) {
+      lines.push({
+        date: bucketStart,
+        amount: -r2(budgeted),
+        kind: "budget",
+        label: plan.categoryNames.get(slug) ?? humanise(slug),
+        sourceId: null,
+        estimated: true,
+      });
+    }
+    aggregated += trailing;
+  }
+
+  if (aggregated > 0) {
+    lines.push({
+      date: bucketStart,
+      amount: -r2(aggregated),
+      kind: "run_rate",
+      label: "Running costs",
+      sourceId: null,
+      estimated: true,
+    });
+  }
+  return lines;
+}
+
+function humanise(slug: string): string {
+  if (slug === UNCATEGORISED) return "Uncategorised";
+  return slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
 export type BuildCashForecastInput = {
@@ -409,10 +486,17 @@ export async function buildCashForecast(
   }
 
   // --- baseline operating spend -------------------------------------------
-  const runRate = await runRateMonthly(client, input.teamId, asOf);
-  if (runRate.amount <= 0) {
+  const plan = await getOperatingPlan(client, {
+    teamId: input.teamId,
+    asOf,
+    through: horizonEnd,
+  });
+  if (
+    plan.trailingByCategory.size === 0 &&
+    plan.budgetByCategoryMonth.size === 0
+  ) {
     warnings.push(
-      "No operating spend in the last 90 days, so the forecast shows no running costs. It will read optimistically.",
+      "No operating spend in the last 90 days and no budgets, so the forecast shows no running costs. It will read optimistically.",
     );
   }
 
@@ -432,23 +516,10 @@ export async function buildCashForecast(
     cursor = end;
   }
 
-  // The run rate is spread evenly rather than dated, because it represents many
-  // small payments whose individual timing is not knowable.
+  // Operating spend is spread across each bucket rather than dated, because it
+  // represents many small payments whose individual timing is not knowable.
   for (const b of buckets) {
-    const days =
-      (new Date(`${b.end}T00:00:00Z`).getTime() -
-        new Date(`${b.start}T00:00:00Z`).getTime()) /
-      86400000;
-    if (runRate.amount > 0) {
-      b.lines.push({
-        date: b.start,
-        amount: -r2((runRate.amount * days) / 30.44),
-        kind: "run_rate",
-        label: "Running costs",
-        sourceId: null,
-        estimated: true,
-      });
-    }
+    b.lines.push(...operatingLines(b.start, b.end, plan));
   }
 
   for (const line of lines) {

@@ -18,6 +18,15 @@ export {
   type XbrlResult,
 } from "./annual-accounts-xbrl.js";
 export {
+  type BudgetRow,
+  copyBudgetForward,
+  getBudgetVsActual,
+  getOperatingPlan,
+  type OperatingPlan,
+  setBudget,
+  UNCATEGORISED,
+} from "./budgets.js";
+export {
   type BuildCashForecastInput,
   buildCashForecast,
   type CashBucket,

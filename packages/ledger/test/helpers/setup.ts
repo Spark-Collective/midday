@@ -59,13 +59,18 @@ const M43 = readFileSync(
   "utf8",
 );
 
+const M44 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0044_budgets.sql"),
+  "utf8",
+);
+
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
   DROP VIEW IF EXISTS v_general_ledger;
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
   DROP TABLE IF EXISTS expense_note_lines, expense_notes,
-    cash_forecast_snapshots, tracker_projects,
+    budgets, cash_forecast_snapshots, tracker_projects,
     customers, filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
@@ -105,7 +110,7 @@ const BOOTSTRAP = `
   );
   CREATE TABLE transaction_categories (
     id uuid DEFAULT gen_random_uuid() UNIQUE NOT NULL,
-    team_id uuid NOT NULL, slug text, name text
+    team_id uuid NOT NULL, slug text, name text, excluded boolean DEFAULT false
   );
   CREATE TABLE customers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,6 +141,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M39);
   await db.query(M40);
   await db.query(M43);
+  await db.query(M44);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );
