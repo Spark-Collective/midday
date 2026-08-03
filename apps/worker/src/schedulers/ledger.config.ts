@@ -27,6 +27,18 @@ export const ledgerStaticSchedulers: StaticSchedulerConfig[] = [
     },
   },
   {
+    name: "cash-forecast-snapshot-scheduler",
+    queue: "accounting",
+    // 1st of the month 04:00 UTC, after the filings sweep so the curve includes
+    // any obligation created overnight.
+    cron: "0 4 1 * *",
+    jobName: "cash-forecast-snapshot",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
+  {
     name: "filings-generate-scheduler",
     queue: "accounting",
     cron: "30 3 * * *", // nightly 03:30 UTC; idempotent, so a missed run self-heals

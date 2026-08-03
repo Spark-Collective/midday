@@ -12,6 +12,7 @@ import { ChatView } from "@/components/chat/chat-view";
 import { NewChatButton } from "@/components/chat/new-chat-button";
 import { useInvoiceParams } from "@/hooks/use-invoice-params";
 import { AskMidday } from "./ask-midday";
+import { CashForecast } from "./cash-forecast";
 import { McpBanner } from "./mcp-banner";
 import { SummarySkeleton, WidgetCardsSkeleton } from "./overview-skeleton";
 import { QuickActions } from "./quick-actions";
@@ -66,6 +67,7 @@ export function OverviewView() {
           <Suspense fallback={<WidgetCardsSkeleton />}>
             <WidgetCards />
           </Suspense>
+          <CashForecast />
           <McpBanner />
         </div>
       )}

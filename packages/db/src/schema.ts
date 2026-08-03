@@ -906,6 +906,9 @@ export const invoices = pgTable(
     dueDate: timestamp("due_date", { withTimezone: true, mode: "string" }),
     invoiceNumber: text("invoice_number"),
     customerId: uuid("customer_id"),
+    // Which project this invoice bills, so the forecast can net landed work
+    // against what has already been invoiced for it.
+    projectId: uuid("project_id"),
     amount: numericCasted({ precision: 10, scale: 2 }),
     currency: text(),
     lineItems: jsonb("line_items"),
@@ -2414,6 +2417,13 @@ export const trackerProjects = pgTable(
     // You can use { mode: "bigint" } if numbers are exceeding js number limitations
     estimate: bigint({ mode: "number" }),
     customerId: uuid("customer_id"),
+    // Landed work not yet invoiced: when you expect to bill it, and for what.
+    // contractValue null = hourly, so the value is estimate x rate.
+    expectedInvoiceDate: date("expected_invoice_date"),
+    contractValue: numericCasted("contract_value", {
+      precision: 10,
+      scale: 2,
+    }),
     fts: tsvector("fts")
       .notNull()
       .generatedAlwaysAs(
@@ -4790,6 +4800,44 @@ export const directors = pgTable(
     }),
   ],
 );
+
+export const cashForecastSnapshots = pgTable(
+  "cash_forecast_snapshots",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    takenOn: date("taken_on").notNull(),
+    openingBalance: numericCasted("opening_balance", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    currency: text().notNull(),
+    // The curve exactly as rendered on takenOn, so a later comparison sees what
+    // was claimed rather than a recomputation from today's data.
+    buckets: jsonb().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("cash_forecast_snapshots_team_taken_on_idx").on(
+      table.teamId,
+      table.takenOn.desc(),
+    ),
+    unique("cash_forecast_snapshots_team_date_unique").on(
+      table.teamId,
+      table.takenOn,
+    ),
+    pgPolicy("Team members can manage cash forecast snapshots", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+).enableRLS();
 
 export const filings = pgTable(
   "filings",

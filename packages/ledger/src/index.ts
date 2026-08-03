@@ -18,6 +18,16 @@ export {
   type XbrlResult,
 } from "./annual-accounts-xbrl.js";
 export {
+  type BuildCashForecastInput,
+  buildCashForecast,
+  type CashBucket,
+  type CashForecast,
+  type CashLine,
+  type CashLineKind,
+  getPaymentLagDays,
+  snapshotCashForecast,
+} from "./cashflow.js";
+export {
   type CloseReport,
   closePeriod,
   type RevaluationResult,

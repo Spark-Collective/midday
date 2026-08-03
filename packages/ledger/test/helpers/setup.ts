@@ -54,12 +54,18 @@ const M40 = readFileSync(
   "utf8",
 );
 
+const M43 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0043_cash_forecast.sql"),
+  "utf8",
+);
+
 const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_trial_balance;
   DROP VIEW IF EXISTS v_general_ledger;
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
   DROP TABLE IF EXISTS expense_note_lines, expense_notes,
+    cash_forecast_snapshots, tracker_projects,
     customers, filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
@@ -87,7 +93,8 @@ const BOOTSTRAP = `
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id uuid NOT NULL, customer_id uuid, customer_name text,
     invoice_number text, amount numeric(10,2), vat numeric(10,2), currency text,
-    issue_date timestamptz, status text DEFAULT 'unpaid'
+    issue_date timestamptz, status text DEFAULT 'unpaid',
+    due_date timestamptz, paid_at timestamptz
   );
   CREATE TABLE transactions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -107,7 +114,14 @@ const BOOTSTRAP = `
   );
   CREATE TABLE bank_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_id uuid NOT NULL, name text, currency text
+    team_id uuid NOT NULL, name text, currency text,
+    balance numeric(14,2) DEFAULT 0, enabled boolean DEFAULT true
+  );
+  CREATE TABLE tracker_projects (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL, name text NOT NULL, customer_id uuid,
+    rate numeric(10,2), currency text, estimate bigint,
+    billable boolean DEFAULT false, status text DEFAULT 'in_progress'
   );
 `;
 
@@ -121,6 +135,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M16);
   await db.query(M39);
   await db.query(M40);
+  await db.query(M43);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

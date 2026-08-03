@@ -7,12 +7,13 @@ import { bankAccountsRouter } from "./bank-accounts";
 import { bankConnectionsRouter } from "./bank-connections";
 import { bankingRouter } from "./banking";
 import { billingRouter } from "./billing";
-
+import { cashflowRouter } from "./cashflow";
 import { connectorsRouter } from "./connectors";
 import { customersRouter } from "./customers";
 import { documentTagAssignmentsRouter } from "./document-tag-assignments";
 import { documentTagsRouter } from "./document-tags";
 import { documentsRouter } from "./documents";
+import { expenseNotesRouter } from "./expense-notes";
 import { filingsRouter } from "./filings";
 import { inboxRouter } from "./inbox";
 import { inboxAccountsRouter } from "./inbox-accounts";
@@ -23,7 +24,6 @@ import { invoiceProductsRouter } from "./invoice-products";
 import { invoiceRecurringRouter } from "./invoice-recurring";
 import { invoiceTemplateRouter } from "./invoice-template";
 import { jobsRouter } from "./jobs";
-import { expenseNotesRouter } from "./expense-notes";
 import { ledgerRouter } from "./ledger";
 import { notificationSettingsRouter } from "./notification-settings";
 import { notificationsRouter } from "./notifications";
@@ -69,6 +69,7 @@ export const appRouter = createTRPCRouter({
   invoiceRecurring: invoiceRecurringRouter,
   invoiceTemplate: invoiceTemplateRouter,
   jobs: jobsRouter,
+  cashflow: cashflowRouter,
   filings: filingsRouter,
   expenseNotes: expenseNotesRouter,
   ledger: ledgerRouter,
