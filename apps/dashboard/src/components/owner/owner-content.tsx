@@ -229,7 +229,7 @@ function PersonalItems({
 
       <div className="flex flex-wrap items-end gap-2">
         <select
-          className="border border-border bg-background px-2 py-1 text-sm"
+          className="h-9 border border-border bg-background px-3 text-sm"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
@@ -248,7 +248,7 @@ function PersonalItems({
         />
         <input
           type="date"
-          className="border border-border bg-background px-2 py-1 text-sm"
+          className="h-9 border border-border bg-background px-3 text-sm"
           value={paidOn}
           onChange={(e) => setPaidOn(e.target.value)}
         />
@@ -276,6 +276,108 @@ function PersonalItems({
           {add.isPending ? "Adding…" : "Add"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function Residences({ directorId }: { directorId: string }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const [municipality, setMunicipality] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const { data: rows } = useQuery(
+    trpc.owner.residences.queryOptions({ directorId }),
+  );
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: trpc.owner.residences.queryKey() });
+    qc.invalidateQueries({ queryKey: trpc.owner.summary.queryKey() });
+  };
+  const add = useMutation({
+    ...trpc.owner.addResidence.mutationOptions(),
+    onSuccess: () => {
+      setMunicipality("");
+      setFromDate("");
+      setToDate("");
+      invalidate();
+    },
+  });
+  const remove = useMutation({
+    ...trpc.owner.deleteResidence.mutationOptions(),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <div className="border border-border p-4">
+      <p className="mb-1 text-sm">Residence history</p>
+      <p className="mb-3 text-xs text-[#878787]">
+        The municipal surcharge follows where you lived on 1 January of the
+        assessment year, not where you live now. If you have moved, record it
+        here or the wrong rate is used.
+      </p>
+
+      {rows && rows.length > 0 && (
+        <div className="mb-3 space-y-1.5">
+          {rows.map((r) => (
+            <div key={r.id} className="flex items-baseline gap-2 text-sm">
+              <span>{r.municipality}</span>
+              <span className="text-xs text-[#878787]">
+                {r.fromDate} → {r.toDate ?? "now"}
+              </span>
+              <button
+                type="button"
+                className="ml-auto text-xs text-[#878787] hover:text-red-600"
+                onClick={() => remove.mutate({ id: r.id })}
+              >
+                remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          placeholder="Municipality"
+          className="h-9 w-40 border border-border bg-background px-3 text-sm"
+          value={municipality}
+          onChange={(e) => setMunicipality(e.target.value)}
+        />
+        <input
+          type="date"
+          className="h-9 border border-border bg-background px-3 text-sm"
+          value={fromDate}
+          onChange={(e) => setFromDate(e.target.value)}
+        />
+        <input
+          type="date"
+          className="h-9 border border-border bg-background px-3 text-sm"
+          value={toDate}
+          onChange={(e) => setToDate(e.target.value)}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!municipality.trim() || !fromDate || add.isPending}
+          onClick={() =>
+            add.mutate({
+              directorId,
+              municipality: municipality.trim(),
+              fromDate,
+              toDate: toDate || undefined,
+            })
+          }
+        >
+          {add.isPending ? "Adding…" : "Add"}
+        </Button>
+      </div>
+      <p className="mt-2 text-xs text-[#878787]">
+        Leave the end date empty for where you live now.
+      </p>
+      {add.error && (
+        <p className="mt-2 text-xs text-red-600">{add.error.message}</p>
+      )}
     </div>
   );
 }
@@ -322,10 +424,10 @@ export function OwnerContent() {
 
   return (
     <div className="max-w-[1000px]">
-      <div className="mb-6 flex items-center gap-2">
+      <div className="flex items-center gap-2 py-6">
         {directors.length > 1 && (
           <select
-            className="border border-border bg-background px-2 py-1 text-sm"
+            className="h-9 border border-border bg-background px-3 text-sm"
             value={active ?? ""}
             onChange={(e) => setDirectorId(e.target.value)}
           >
@@ -337,7 +439,7 @@ export function OwnerContent() {
           </select>
         )}
         <select
-          className="border border-border bg-background px-2 py-1 text-sm"
+          className="h-9 border border-border bg-background px-3 text-sm"
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
         >
@@ -487,6 +589,8 @@ export function OwnerContent() {
               Credited against your personal income tax.
             </p>
           </div>
+
+          {active && <Residences directorId={active} />}
 
           {active && <PersonalItems directorId={active} year={year} />}
 

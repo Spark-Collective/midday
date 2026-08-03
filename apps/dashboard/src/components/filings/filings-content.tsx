@@ -510,6 +510,91 @@ function PersonalTaxPanel({ filing }: { filing: Filing }) {
   );
 }
 
+/**
+ * Close the loop on anything filed outside the app (Tax-on-web, the NBB deposit,
+ * a payment to the social fund). Evidence is required: the API refuses to record
+ * "filed" without a reference, so the timeline can never claim something it
+ * cannot show.
+ */
+function MarkFiledBox({ filing }: { filing: Filing }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [ref, setRef] = useState("");
+  const mark = useMutation({
+    ...trpc.filings.markFiled.mutationOptions(),
+    onSuccess: () => {
+      setOpen(false);
+      setRef("");
+      qc.invalidateQueries({ queryKey: trpc.filings.list.queryKey() });
+    },
+  });
+
+  if (filing.status === "filed" || filing.status === "confirmed") {
+    return (
+      <p className="mt-3 border-t border-border pt-3 font-mono text-xs text-green-600">
+        Filed · {filing.externalRef}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      {open ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            className="h-9 w-72 border border-border bg-background px-3 text-sm"
+            placeholder="Reference, deposit number or payment date"
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!ref.trim() || mark.isPending}
+            onClick={() =>
+              mark.mutate({ filingId: filing.id, externalRef: ref.trim() })
+            }
+          >
+            {mark.isPending ? "Saving…" : "Record as filed"}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+          I filed this myself
+        </Button>
+      )}
+      {mark.error && (
+        <p className="mt-2 text-xs text-red-600">{mark.error.message}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Social contributions and advance payments: no API to call, but the operator
+ * still needs the amount, the deadline and somewhere to record the payment.
+ */
+function PaymentPanel({ filing }: { filing: Filing }) {
+  const isSocial = filing.kind === "social_contribution";
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <p className="text-sm text-[#878787]">
+        {isSocial
+          ? "Quarterly provisional contribution to your social insurance fund. The amount comes from the fund, not from us: it is based on income from roughly three years ago and is regularised later."
+          : "Optional prepayment against corporate tax. Paying enough across the four deadlines avoids a surcharge; the earlier quarters carry the larger benefit."}
+      </p>
+      <p className="mt-2 text-xs text-[#878787]">
+        {isSocial
+          ? "Pay it from the bank account so the transaction matches automatically, then record it here."
+          : "Use the structured communication from your prepayment notice."}
+      </p>
+    </div>
+  );
+}
 export function FilingsContent() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -536,9 +621,9 @@ export function FilingsContent() {
 
   return (
     <div className="max-w-[1000px]">
-      <div className="mb-6 flex items-center gap-2">
+      <div className="flex items-center gap-2 py-6">
         <select
-          className="border border-border bg-background px-2 py-1 text-sm"
+          className="h-9 border border-border bg-background px-3 text-sm"
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
         >
@@ -600,7 +685,10 @@ export function FilingsContent() {
                 {f.kind === "annual_accounts" && (
                   <AnnualAccountsPanel filing={f} />
                 )}
+                {(f.kind === "social_contribution" ||
+                  f.kind === "advance_payment") && <PaymentPanel filing={f} />}
                 <StepList filing={f} />
+                {f.kind !== "vat_return" && <MarkFiledBox filing={f} />}
               </div>
             )}
           </div>

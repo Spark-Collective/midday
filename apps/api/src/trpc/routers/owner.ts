@@ -4,6 +4,7 @@ import {
   getOwnerSummary,
   linkDirectorAccounts,
   listDirectors,
+  listResidences,
 } from "@midday/ledger";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
@@ -150,6 +151,69 @@ export const ownerRouter = createTRPCRouter({
       withClient(async (c) => {
         const r = await c.query(
           "DELETE FROM director_items WHERE id = $1 AND team_id = $2",
+          [input.id, teamId],
+        );
+        return { deleted: r.rowCount ?? 0 };
+      }),
+    ),
+
+  /**
+   * Residence history. The municipal surcharge follows where the director lived
+   * on 1 January of the assessment year, so anyone who has moved needs this.
+   */
+  residences: protectedProcedure
+    .input(z.object({ directorId: z.string().uuid() }))
+    .query(async ({ ctx: { teamId }, input }) =>
+      listResidences(pool(), { teamId: teamId!, directorId: input.directorId }),
+    ),
+
+  addResidence: protectedProcedure
+    .input(
+      z.object({
+        directorId: z.string().uuid(),
+        municipality: z.string().min(1),
+        fromDate: z.string().date(),
+        toDate: z.string().date().optional(),
+      }),
+    )
+    .mutation(async ({ ctx: { teamId }, input }) =>
+      withClient(async (c) => {
+        const owns = await c.query(
+          "SELECT 1 FROM directors WHERE id = $1 AND team_id = $2",
+          [input.directorId, teamId],
+        );
+        if (owns.rowCount === 0) throw new Error("director not found");
+        try {
+          const r = await c.query(
+            `INSERT INTO director_residences (team_id, director_id, municipality, from_date, to_date)
+             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+            [
+              teamId,
+              input.directorId,
+              input.municipality.trim(),
+              input.fromDate,
+              input.toDate ?? null,
+            ],
+          );
+          return r.rows[0];
+        } catch (err) {
+          // The gist EXCLUDE constraint is the real guard; translate it.
+          if (String(err).includes("director_residences_no_overlap")) {
+            throw new Error(
+              "That period overlaps an existing residence. Close the previous one first.",
+            );
+          }
+          throw err;
+        }
+      }),
+    ),
+
+  deleteResidence: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx: { teamId }, input }) =>
+      withClient(async (c) => {
+        const r = await c.query(
+          "DELETE FROM director_residences WHERE id = $1 AND team_id = $2",
           [input.id, teamId],
         );
         return { deleted: r.rowCount ?? 0 };

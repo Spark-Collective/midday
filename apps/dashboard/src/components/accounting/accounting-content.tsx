@@ -818,9 +818,8 @@ function AnnualAccountsTab() {
           {rows
             .filter((r) => r.values.some((v) => v !== 0))
             .map((r) => {
-              const total = /^(20\/58|10\/49|10\/15|17\/49|21\/28|29\/58|99)/.test(
-                r.code,
-              );
+              const total =
+                /^(20\/58|10\/49|10\/15|17\/49|21\/28|29\/58|99)/.test(r.code);
               return (
                 <TableRow key={r.code} className={total ? "font-medium" : ""}>
                   <TableCell className="w-20 font-mono text-xs text-muted-foreground">
@@ -1095,16 +1094,63 @@ export function AccountingContent() {
   return (
     <div className="max-w-[1200px]">
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-4 flex-wrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="income">Resultatenrekening</TabsTrigger>
-          <TabsTrigger value="balance">Balans</TabsTrigger>
-          <TabsTrigger value="vat">VAT return</TabsTrigger>
-          <TabsTrigger value="annual">Jaarrekening</TabsTrigger>
-          <TabsTrigger value="periods">Periods</TabsTrigger>
-          <TabsTrigger value="trial-balance">Trial balance</TabsTrigger>
-          <TabsTrigger value="general-ledger">General ledger</TabsTrigger>
-          <TabsTrigger value="open-items">Open items</TabsTrigger>
+        {/* Page-level navigation: underline tabs, not the pill block. Nine pills
+            read as a grey slab jammed under the global search bar. */}
+        <TabsList className="mb-6 mt-6 flex h-auto w-full flex-wrap justify-start gap-x-6 gap-y-2 rounded-none border-b border-border bg-transparent p-0">
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="overview"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="income"
+          >
+            Resultatenrekening
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="balance"
+          >
+            Balans
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="vat"
+          >
+            VAT return
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="annual"
+          >
+            Jaarrekening
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="periods"
+          >
+            Periods
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="trial-balance"
+          >
+            Trial balance
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="general-ledger"
+          >
+            General ledger
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="open-items"
+          >
+            Open items
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
           <OverviewTab />
