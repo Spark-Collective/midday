@@ -1,7 +1,12 @@
-import { createTRPCRouter, protectedProcedure } from "@api/trpc/init";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  publicProcedure,
+} from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
   expireLapsedProposals,
+  listPortalProposals,
   listProposals,
   setProposalStatus,
   upsertProposal,
@@ -98,6 +103,19 @@ export const proposalsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx: { teamId }, input }) =>
       withClient((c) => setProposalStatus(c, { teamId: teamId!, ...input })),
+    ),
+
+  /**
+   * PUBLIC: what a client sees on their own portal page.
+   *
+   * Scoped entirely by the unguessable portal id, and filtered by an ALLOWLIST
+   * of statuses, so an internal draft can never appear here even if a new status
+   * is added later.
+   */
+  portal: publicProcedure
+    .input(z.object({ portalId: z.string().min(1) }))
+    .query(async ({ input }) =>
+      withClient((c) => listPortalProposals(c, { portalId: input.portalId })),
     ),
 
   expireLapsed: protectedProcedure.mutation(async ({ ctx: { teamId } }) =>

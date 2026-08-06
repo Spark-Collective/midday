@@ -23,6 +23,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { InvoiceStatus } from "@/components/invoice-status";
+import { PortalProposals } from "@/components/portal-proposals";
 import { downloadFile } from "@/lib/download";
 import { saveFile } from "@/lib/save-file";
 import { useTRPC } from "@/trpc/client";
@@ -219,6 +220,9 @@ export function PortalContent({ portalId }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Proposals Section */}
+        <PortalProposals portalId={portalId} />
 
         {/* Invoices Section */}
         <div className="mb-6">

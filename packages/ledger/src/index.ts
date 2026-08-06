@@ -126,6 +126,7 @@ export {
 } from "./post-transaction.js";
 export {
   expireLapsedProposals,
+  listPortalProposals,
   listProposals,
   nextProposalNumber,
   type ProposalInput,

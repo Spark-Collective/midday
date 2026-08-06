@@ -127,7 +127,9 @@ export const registerProposalTools: RegisterTools = (server, ctx) => {
           bodyMd: z
             .string()
             .optional()
-            .describe("The document in markdown, including the SLA section"),
+            .describe(
+              "The document in markdown, including the SLA section. CLIENT-VISIBLE: this is rendered on the customer portal, so it must contain nothing internal.",
+            ),
           sla: z
             .record(z.string(), z.any())
             .optional()

@@ -369,3 +369,64 @@ export async function expireLapsedProposals(
   );
   return { expired: r.rowCount ?? 0 };
 }
+
+/**
+ * What a CLIENT may see through the customer portal.
+ *
+ * An ALLOWLIST, on purpose. The same denylist habit that would have put quotes
+ * into the VAT client listing would here leak an internal draft to the client
+ * the moment a new status is added. Drafts and withdrawn offers are ours;
+ * everything the client has actually been sent, they may read.
+ *
+ * `body_md` is returned, which makes it CLIENT-FACING BY DEFINITION. Internal
+ * notes do not belong in it.
+ */
+const CLIENT_VISIBLE = ["sent", "viewed", "accepted", "declined", "expired"];
+
+export async function listPortalProposals(
+  client: PoolClient,
+  input: { portalId: string },
+): Promise<ProposalRow[]> {
+  const r = await client.query(
+    `SELECT p.id, p.number, p.title, p.status, p.customer_id, c.name AS customer_name,
+            p.project_id, p.currency,
+            p.one_off_amount::float8 AS one_off_amount,
+            p.recurring_amount::float8 AS recurring_amount,
+            p.recurring_interval, p.recurring_months,
+            p.expires_at::text AS valid_until,
+            p.vat_rate::float8 AS vat_rate,
+            p.expected_invoice_date::text AS expected_invoice_date,
+            p.document_url, p.sent_at, p.decided_at, p.body_md, p.sla,
+            0::float8 AS invoiced
+       FROM proposals p
+       JOIN customers c ON c.id = p.customer_id
+      WHERE c.portal_id = $1 AND c.portal_enabled = true
+        AND p.team_id = c.team_id
+        AND p.status = ANY($2::text[])
+      ORDER BY p.created_at DESC`,
+    [input.portalId, CLIENT_VISIBLE],
+  );
+  return r.rows.map((x) => ({
+    id: x.id,
+    number: x.number,
+    title: x.title,
+    status: asStatus(x.status),
+    customerId: x.customer_id,
+    customerName: x.customer_name,
+    projectId: x.project_id,
+    currency: x.currency,
+    oneOffAmount: x.one_off_amount,
+    recurringAmount: x.recurring_amount,
+    recurringInterval: x.recurring_interval,
+    recurringMonths: x.recurring_months,
+    validUntil: x.valid_until,
+    expectedInvoiceDate: x.expected_invoice_date,
+    documentUrl: x.document_url,
+    vatRate: x.vat_rate,
+    sentAt: x.sent_at,
+    decidedAt: x.decided_at,
+    invoiced: x.invoiced,
+    bodyMd: x.body_md,
+    sla: x.sla,
+  }));
+}
