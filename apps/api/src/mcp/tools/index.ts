@@ -8,6 +8,7 @@ export { registerInvoiceRecurringTools } from "./invoice-recurring";
 export { registerInvoiceTemplateTools } from "./invoice-templates";
 export { registerInvoiceTools } from "./invoices";
 export { registerLedgerTools } from "./ledger";
+export { registerProposalTools } from "./proposals";
 export { registerReportTools } from "./reports";
 export { registerSearchTools } from "./search";
 export { registerTagTools } from "./tags";

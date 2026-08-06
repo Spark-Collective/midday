@@ -22,6 +22,7 @@ import {
 export type CashLineKind =
   | "invoice"
   | "project"
+  | "proposal"
   | "filing"
   | "budget"
   | "run_rate";
@@ -72,6 +73,12 @@ function addDays(date: string, days: number): string {
 const DEFAULT_PAYMENT_LAG_DAYS = 0;
 /** Below this, one unusual invoice would define the customer's behaviour. */
 const MIN_LAG_SAMPLES = 3;
+/** How often a recurring price is actually billed. */
+const MONTHS_PER_INTERVAL: Record<string, number> = {
+  month: 1,
+  quarter: 3,
+  year: 12,
+};
 /** Days from invoicing to cash for work billed from a project. */
 const DEFAULT_PAYMENT_TERMS_DAYS = 30;
 
@@ -435,7 +442,13 @@ export async function buildCashForecast(
       WHERE p.team_id = $1
         AND p.expected_invoice_date IS NOT NULL
         AND p.expected_invoice_date <= $2::date
-        AND p.status <> 'completed'`,
+        AND p.status <> 'completed'
+        -- An accepted proposal is the better record of the same money, and it
+        -- carries its own figures. Whichever exists, exactly one contributes.
+        AND NOT EXISTS (
+          SELECT 1 FROM proposals pr
+           WHERE pr.project_id = p.id AND pr.status = 'accepted'
+        )`,
     [input.teamId, horizonEnd],
   );
   for (const row of projects.rows) {
@@ -476,6 +489,77 @@ export async function buildCashForecast(
       sourceId: row.id,
       estimated: true,
     });
+  }
+
+  // --- accepted proposals --------------------------------------------------
+  // The only proposal status that is money. Everything before `accepted` is a
+  // hope, and a forecast built on hopes cannot be checked against a bank.
+  const accepted = await client.query(
+    `SELECT p.id, p.number, p.title, p.customer_id, p.currency,
+            p.one_off_amount::float8 AS one_off_amount,
+            p.recurring_amount::float8 AS recurring_amount,
+            p.recurring_interval, p.recurring_months,
+            p.expected_invoice_date::text AS expected_invoice_date,
+            p.decided_at::date::text AS decided_on,
+            COALESCE((
+              SELECT sum(i.amount) FROM invoices i
+               WHERE i.proposal_id = p.id AND i.status <> 'canceled'
+            ), 0)::float8 AS invoiced
+       FROM proposals p
+      WHERE p.team_id = $1 AND p.status = 'accepted'`,
+    [input.teamId],
+  );
+  for (const row of accepted.rows) {
+    if (row.currency && row.currency !== currency) {
+      warnings.push(
+        `Proposal ${row.number} is in ${row.currency} and is excluded.`,
+      );
+      continue;
+    }
+    const lag = byCustomer.get(row.customer_id) ?? teamDefault;
+
+    // The one-off, less anything already invoiced against this proposal.
+    const oneOff = Number(row.one_off_amount ?? 0) - Number(row.invoiced);
+    if (oneOff > 0 && row.expected_invoice_date) {
+      lines.push({
+        date: addDays(
+          row.expected_invoice_date,
+          DEFAULT_PAYMENT_TERMS_DAYS + lag,
+        ),
+        amount: r2(oneOff),
+        kind: "proposal",
+        label: `${row.number} ${row.title}`,
+        sourceId: row.id,
+        estimated: true,
+      });
+    }
+
+    // The retainer or SLA fee, repeated to the end of its committed term or the
+    // horizon, whichever comes first.
+    const every = MONTHS_PER_INTERVAL[row.recurring_interval as string];
+    if (row.recurring_amount && every) {
+      const start = row.expected_invoice_date ?? row.decided_on ?? asOf;
+      const lastMonth =
+        row.recurring_months !== null && row.recurring_months !== undefined
+          ? Number(row.recurring_months)
+          : Number.POSITIVE_INFINITY;
+      for (let i = 0, m = 0; m < lastMonth; i++, m += every) {
+        const d = new Date(`${start}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() + m);
+        const billed = iso(d);
+        if (billed > horizonEnd) break;
+        const paid = addDays(billed, DEFAULT_PAYMENT_TERMS_DAYS + lag);
+        if (paid > horizonEnd) break;
+        lines.push({
+          date: paid,
+          amount: r2(Number(row.recurring_amount)),
+          kind: "proposal",
+          label: `${row.number} ${row.title} (${row.recurring_interval}ly)`,
+          sourceId: row.id,
+          estimated: true,
+        });
+      }
+    }
   }
 
   // --- tax and social outflows --------------------------------------------

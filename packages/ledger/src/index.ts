@@ -125,6 +125,17 @@ export {
   postTransaction,
 } from "./post-transaction.js";
 export {
+  expireLapsedProposals,
+  listProposals,
+  nextProposalNumber,
+  type ProposalInput,
+  type ProposalRow,
+  type ProposalStatus,
+  type RecurringInterval,
+  setProposalStatus,
+  upsertProposal,
+} from "./proposals.js";
+export {
   type ReconcileInput,
   type ReconcileResult,
   reconcile,

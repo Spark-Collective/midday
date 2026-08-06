@@ -11,6 +11,8 @@ export const SCOPES = [
   "invoices.write",
   "ledger.read",
   "ledger.write",
+  "proposals.read",
+  "proposals.write",
   "reports.read",
   "search.read",
   "tags.read",

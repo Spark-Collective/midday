@@ -41,6 +41,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyInput } from "@/components/copy-input";
+import { CustomerProposals } from "@/components/customer-proposals";
 import { OpenURL } from "@/components/open-url";
 import { useCustomerParams } from "@/hooks/use-customer-params";
 import { useInvoiceParams } from "@/hooks/use-invoice-params";
@@ -1089,6 +1090,9 @@ export function CustomerDetails() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Proposals Section */}
+            <CustomerProposals customerId={customer.id} />
 
             {/* Statement Section */}
             <div className="pt-4">

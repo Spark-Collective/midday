@@ -54,6 +54,11 @@ const M40 = readFileSync(
   "utf8",
 );
 
+const M45 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0045_proposals.sql"),
+  "utf8",
+);
+
 const M43 = readFileSync(
   join(import.meta.dir, "../../../db/migrations/0043_cash_forecast.sql"),
   "utf8",
@@ -70,13 +75,13 @@ const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
   DROP TABLE IF EXISTS expense_note_lines, expense_notes,
-    budgets, cash_forecast_snapshots, tracker_projects,
+    budgets, cash_forecast_snapshots, proposals, tracker_projects,
     customers, filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
     reconciliation_allocations, reconciliations, vu_rates,
     tax_codes, ledger_lines, journal_entries, fiscal_periods, journals,
     gl_accounts, invoices, transactions, transaction_categories, bank_accounts CASCADE;
-  DROP TYPE IF EXISTS filing_kind, filing_status, gl_account_type, journal_type, fiscal_period_status,
+  DROP TYPE IF EXISTS proposal_status, filing_kind, filing_status, gl_account_type, journal_type, fiscal_period_status,
     journal_entry_status, journal_entry_source, ledger_party_type, tax_kind,
     invoice_type, amortization_kind CASCADE;
   CREATE SCHEMA IF NOT EXISTS private;
@@ -142,6 +147,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M40);
   await db.query(M43);
   await db.query(M44);
+  await db.query(M45);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

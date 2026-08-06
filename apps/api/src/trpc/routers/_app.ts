@@ -30,6 +30,7 @@ import { notificationsRouter } from "./notifications";
 import { oauthApplicationsRouter } from "./oauth-applications";
 import { overviewRouter } from "./overview";
 import { ownerRouter } from "./owner";
+import { proposalsRouter } from "./proposals";
 import { reportsRouter } from "./reports";
 import { searchRouter } from "./search";
 import { shortLinksRouter } from "./short-links";
@@ -74,6 +75,7 @@ export const appRouter = createTRPCRouter({
   expenseNotes: expenseNotesRouter,
   ledger: ledgerRouter,
   owner: ownerRouter,
+  proposals: proposalsRouter,
   overview: overviewRouter,
   reports: reportsRouter,
   oauthApplications: oauthApplicationsRouter,

@@ -13,6 +13,7 @@ import {
   registerInvoiceTemplateTools,
   registerInvoiceTools,
   registerLedgerTools,
+  registerProposalTools,
   registerReportTools,
   registerSearchTools,
   registerTagTools,
@@ -117,6 +118,7 @@ export function createMcpServer(ctx: McpContext): McpServer {
   registerCategoryTools(server, ctx);
   registerInvoiceTools(server, ctx);
   registerLedgerTools(server, ctx);
+  registerProposalTools(server, ctx);
   registerInvoiceProductTools(server, ctx);
   registerInvoiceRecurringTools(server, ctx);
   registerInvoiceTemplateTools(server, ctx);

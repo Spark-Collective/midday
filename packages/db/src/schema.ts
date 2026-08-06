@@ -148,6 +148,15 @@ export const invoiceTypeEnum = pgEnum("invoice_type", [
   "credit_note",
 ]);
 
+export const proposalStatusEnum = pgEnum("proposal_status", [
+  "draft",
+  "sent",
+  "accepted",
+  "declined",
+  "expired",
+  "withdrawn",
+]);
+
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "draft",
   "overdue",
@@ -909,6 +918,8 @@ export const invoices = pgTable(
     // Which project this invoice bills, so the forecast can net landed work
     // against what has already been invoiced for it.
     projectId: uuid("project_id"),
+    // Which proposal this invoice bills, same reason.
+    proposalId: uuid("proposal_id"),
     amount: numericCasted({ precision: 10, scale: 2 }),
     currency: text(),
     lineItems: jsonb("line_items"),
@@ -4827,6 +4838,56 @@ export const budgets = pgTable(
       table.periodKey,
     ),
     pgPolicy("Team members can manage budgets", {
+      as: "permissive",
+      for: "all",
+      to: ["public"],
+      using: sql`(team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user))`,
+    }),
+  ],
+).enableRLS();
+
+export const proposals = pgTable(
+  "proposals",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id"),
+    projectId: uuid("project_id"),
+    // Own sequence (P-2026-001). Never the invoice sequence: a proposal is not
+    // a taxable event and must never reach the VAT listings.
+    number: text().notNull(),
+    title: text().notNull(),
+    status: proposalStatusEnum().default("draft").notNull(),
+    currency: text().default("EUR").notNull(),
+    oneOffAmount: numericCasted("one_off_amount", { precision: 12, scale: 2 }),
+    recurringAmount: numericCasted("recurring_amount", {
+      precision: 12,
+      scale: 2,
+    }),
+    recurringInterval: text("recurring_interval"),
+    recurringMonths: integer("recurring_months"),
+    validUntil: date("valid_until"),
+    expectedInvoiceDate: date("expected_invoice_date"),
+    // The document itself, SLA included.
+    bodyMd: text("body_md"),
+    sla: jsonb(),
+    documentUrl: text("document_url"),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "string" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true, mode: "string" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("proposals_team_status_idx").on(table.teamId, table.status),
+    index("proposals_customer_idx").on(table.customerId),
+    unique("proposals_team_number_unique").on(table.teamId, table.number),
+    pgPolicy("Team members can manage proposals", {
       as: "permissive",
       for: "all",
       to: ["public"],
