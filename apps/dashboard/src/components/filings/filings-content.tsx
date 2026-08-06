@@ -781,6 +781,18 @@ export function FilingsContent() {
   const [year, setYear] = useState(now.getFullYear());
   const [openId, setOpenId] = useState<string | null>(null);
   const trpc = useTRPC();
+  // Years that actually carry obligations, so historical filings (a 2024
+  // personal-tax draft, say) are reachable instead of stranded behind a
+  // hardcoded window around today.
+  const { data: knownYears } = useQuery(trpc.filings.years.queryOptions());
+  const yearOptions = [
+    ...new Set([
+      ...(knownYears ?? []),
+      now.getFullYear() - 1,
+      now.getFullYear(),
+      now.getFullYear() + 1,
+    ]),
+  ].sort((a, b) => b - a);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery(
@@ -808,11 +820,7 @@ export function FilingsContent() {
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
         >
-          {[
-            now.getFullYear() - 1,
-            now.getFullYear(),
-            now.getFullYear() + 1,
-          ].map((y) => (
+          {yearOptions.map((y) => (
             <option key={y} value={y}>
               {y}
             </option>

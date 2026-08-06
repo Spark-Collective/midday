@@ -72,6 +72,16 @@ export const filingsRouter = createTRPCRouter({
       listFilings(pool(), { teamId: teamId!, year: input?.year }),
     ),
 
+  /** Years that actually have obligations, so the picker can reach history. */
+  years: protectedProcedure.query(async ({ ctx: { teamId } }) => {
+    const r = await pool().query(
+      `SELECT DISTINCT period_year FROM filings WHERE team_id = $1
+        ORDER BY period_year DESC`,
+      [teamId],
+    );
+    return r.rows.map((x: { period_year: number }) => x.period_year);
+  }),
+
   /** Create this year's obligations. Idempotent, so the UI can call it freely. */
   generate: protectedProcedure
     .input(
