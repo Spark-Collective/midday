@@ -97,7 +97,11 @@ export async function getAnnualAccounts(
     ),
     rub("28", "Financiële vaste activa", (b) => pick(b, ["28"])),
     rub("21/28", "Vaste activa", (b) =>
-      r2(pick(b, ["21"]) + pick(b, ["22", "23", "24", "25", "26", "27"]) + pick(b, ["28"])),
+      r2(
+        pick(b, ["21"]) +
+          pick(b, ["22", "23", "24", "25", "26", "27"]) +
+          pick(b, ["28"]),
+      ),
     ),
     rub("29", "Vorderingen op meer dan één jaar", (b) => pick(b, ["29"])),
     rub("3", "Voorraden en bestellingen in uitvoering", (b) => pick(b, ["3"])),
@@ -108,16 +112,50 @@ export async function getAnnualAccounts(
     rub("54/58", "Liquide middelen", (b) =>
       pick(b, ["54", "55", "56", "57", "58"]),
     ),
-    rub("490/1", "Overlopende rekeningen (actief)", (b) => pick(b, ["490", "491"])),
+    rub("490/1", "Overlopende rekeningen (actief)", (b) =>
+      pick(b, ["490", "491"]),
+    ),
     rub("29/58", "Vlottende activa", (b) =>
       r2(
-        pick(b, ["29", "3", "40", "41", "50", "51", "52", "53", "54", "55", "56", "57", "58", "490", "491"]),
+        pick(b, [
+          "29",
+          "3",
+          "40",
+          "41",
+          "50",
+          "51",
+          "52",
+          "53",
+          "54",
+          "55",
+          "56",
+          "57",
+          "58",
+          "490",
+          "491",
+        ]),
       ),
     ),
     rub("20/58", "TOTAAL ACTIVA", (b) =>
       r2(
         pick(b, ["20", "21", "22", "23", "24", "25", "26", "27", "28"]) +
-          pick(b, ["29", "3", "40", "41", "50", "51", "52", "53", "54", "55", "56", "57", "58", "490", "491"]),
+          pick(b, [
+            "29",
+            "3",
+            "40",
+            "41",
+            "50",
+            "51",
+            "52",
+            "53",
+            "54",
+            "55",
+            "56",
+            "57",
+            "58",
+            "490",
+            "491",
+          ]),
       ),
     ),
   ];
@@ -137,7 +175,23 @@ export async function getAnnualAccounts(
   const totalActiva = (b: Sums) =>
     r2(
       pick(b, ["20", "21", "22", "23", "24", "25", "26", "27", "28"]) +
-        pick(b, ["29", "3", "40", "41", "50", "51", "52", "53", "54", "55", "56", "57", "58", "490", "491"]),
+        pick(b, [
+          "29",
+          "3",
+          "40",
+          "41",
+          "50",
+          "51",
+          "52",
+          "53",
+          "54",
+          "55",
+          "56",
+          "57",
+          "58",
+          "490",
+          "491",
+        ]),
     );
   /** Result not yet processed to 14 (zero once 693/793 are booked). */
   const unallocated = (b: Sums) => r2(totalActiva(b) - passivaBooked(b));
@@ -153,7 +207,9 @@ export async function getAnnualAccounts(
     rub("10/15", "EIGEN VERMOGEN", (b) =>
       r2(pick(b, ["10", "11", "12", "13", "14", "15"], -1) + unallocated(b)),
     ),
-    rub("16", "Voorzieningen en uitgestelde belastingen", (b) => pick(b, ["16"], -1)),
+    rub("16", "Voorzieningen en uitgestelde belastingen", (b) =>
+      pick(b, ["16"], -1),
+    ),
     rub("17", "Schulden op meer dan één jaar", (b) => pick(b, ["17"], -1)),
     rub("42/48", "Schulden op ten hoogste één jaar", (b) =>
       pick(b, ["42", "43", "44", "45", "46", "47", "48"], -1),
@@ -169,7 +225,9 @@ export async function getAnnualAccounts(
           pick(b, ["492", "493"], -1),
       ),
     ),
-    rub("10/49", "TOTAAL PASSIVA", (b) => r2(passivaBooked(b) + unallocated(b))),
+    rub("10/49", "TOTAAL PASSIVA", (b) =>
+      r2(passivaBooked(b) + unallocated(b)),
+    ),
   ];
 
   // ---------------- Resultatenrekening (micro: brutomarge form)
@@ -193,8 +251,7 @@ export async function getAnnualAccounts(
     );
   const finOpbrengsten = (p: Sums) =>
     r2(pick(p, ["75"], -1) + pick(p, NR_INC_FIN, -1));
-  const finKosten = (p: Sums) =>
-    r2(pick(p, ["65"]) + pick(p, NR_COST_FIN));
+  const finKosten = (p: Sums) => r2(pick(p, ["65"]) + pick(p, NR_COST_FIN));
   /** 649 is credit-natural and displayed non-positive. */
   const geactiveerd = (p: Sums) => pick(p, ["649"]);
   const bedrijfswinst = (p: Sums) =>
@@ -204,7 +261,17 @@ export async function getAnnualAccounts(
         pick(p, ["630"]) -
         pick(p, ["631", "632", "633", "634"]) -
         pick(p, ["635", "636", "637", "638"]) -
-        pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]) -
+        pick(p, [
+          "640",
+          "641",
+          "642",
+          "643",
+          "644",
+          "645",
+          "646",
+          "647",
+          "648",
+        ]) -
         geactiveerd(p) -
         nrCostOp(p),
     );
@@ -228,8 +295,10 @@ export async function getAnnualAccounts(
     rub("62", "Bezoldigingen, sociale lasten en pensioenen", (_b, p) =>
       pick(p, ["62"]),
     ),
-    rub("630", "Afschrijvingen en waardeverminderingen op vaste activa", (_b, p) =>
-      pick(p, ["630"]),
+    rub(
+      "630",
+      "Afschrijvingen en waardeverminderingen op vaste activa",
+      (_b, p) => pick(p, ["630"]),
     ),
     rub("631/4", "Waardeverminderingen op voorraden en vorderingen", (_b, p) =>
       pick(p, ["631", "632", "633", "634"]),
@@ -240,8 +309,10 @@ export async function getAnnualAccounts(
     rub("640/8", "Andere bedrijfskosten", (_b, p) =>
       pick(p, ["640", "641", "642", "643", "644", "645", "646", "647", "648"]),
     ),
-    rub("649", "Als herstructureringskosten geactiveerde bedrijfskosten (-)", (_b, p) =>
-      geactiveerd(p),
+    rub(
+      "649",
+      "Als herstructureringskosten geactiveerde bedrijfskosten (-)",
+      (_b, p) => geactiveerd(p),
     ),
     rub("66A", "Niet-recurrente bedrijfskosten", (_b, p) => nrCostOp(p)),
     rub("76A", "Niet-recurrente bedrijfsopbrengsten", (_b, p) => nrIncOp(p)),
@@ -261,7 +332,9 @@ export async function getAnnualAccounts(
       pick(p, ["680"]),
     ),
     rub("67/77", "Belastingen op het resultaat", (_b, p) => belastingen(p)),
-    rub("9904", "Winst (Verlies) van het boekjaar", (_b, p) => winstBoekjaar(p)),
+    rub("9904", "Winst (Verlies) van het boekjaar", (_b, p) =>
+      winstBoekjaar(p),
+    ),
     rub("789", "Onttrekking aan de belastingvrije reserves", (_b, p) =>
       pick(p, ["789"], -1),
     ),

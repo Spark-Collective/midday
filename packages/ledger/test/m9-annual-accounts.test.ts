@@ -159,7 +159,9 @@ describe("annual accounts (M9)", () => {
     );
     // comparative column present and consistent
     expect(aa.years).toEqual([2026, 2025]);
-    expect(aa.resultatenrekening.find((x) => x.code === "9904")?.values[1]).toBe(1800);
+    expect(
+      aa.resultatenrekening.find((x) => x.code === "9904")?.values[1],
+    ).toBe(1800);
     expect(aa.checks.every((c) => c.ok)).toBe(true);
   });
 });
@@ -184,7 +186,9 @@ describe("CBSO XBRL instance (M9)", () => {
     );
     expect(res.xml).toContain("<instant>2025-12-31</instant>");
     // dimensional facts, not per-rubriek elements
-    expect(res.xml).toMatch(/<xbrldi:explicitMember dimension="dim:bas">bas:m\d+</);
+    expect(res.xml).toMatch(
+      /<xbrldi:explicitMember dimension="dim:bas">bas:m\d+</,
+    );
     expect(res.xml).toContain('decimals="INF" unitRef="EUR"');
     // parses as XML and every context is referenced by a fact
     const ids = [...res.xml.matchAll(/<context id="(c\d+)"/g)].map((m) => m[1]);

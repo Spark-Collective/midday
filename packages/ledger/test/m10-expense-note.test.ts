@@ -7,8 +7,8 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Pool, type PoolClient } from "pg";
-import { postExpenseNote } from "../src/post-expense-note.js";
 import { LedgerError } from "../src/post.js";
+import { postExpenseNote } from "../src/post-expense-note.js";
 import { seedBelgianLedger } from "../src/seed.js";
 import { initTestDb, TEST_DB_URL } from "./helpers/setup.js";
 
@@ -50,7 +50,14 @@ async function makeNote(opts: {
       `INSERT INTO expense_note_lines
          (expense_note_id, team_id, position, description, gl_account_code, amount)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, teamId, pos++, l.description ?? "thuisladen tesla", l.code, l.amount],
+      [
+        id,
+        teamId,
+        pos++,
+        l.description ?? "thuisladen tesla",
+        l.code,
+        l.amount,
+      ],
     );
   }
   return id;
@@ -128,7 +135,10 @@ describe("expense notes (M10)", () => {
         { code: "612900", amount: 75.5, description: "klantenlunch" },
       ],
     });
-    const { entryId } = await postExpenseNote(db, { expenseNoteId: id, teamId });
+    const { entryId } = await postExpenseNote(db, {
+      expenseNoteId: id,
+      teamId,
+    });
     const lines = await db.query(
       `SELECT a.code, ll.debit::float8 AS dr, ll.credit::float8 AS cr
          FROM ledger_lines ll JOIN gl_accounts a ON a.id = ll.account_id
@@ -147,9 +157,9 @@ describe("expense notes (M10)", () => {
       lines: [{ code: "611901", amount: 50 }],
     });
     await postExpenseNote(db, { expenseNoteId: posted, teamId });
-    expect(postExpenseNote(db, { expenseNoteId: posted, teamId })).rejects.toThrow(
-      /already posted/,
-    );
+    expect(
+      postExpenseNote(db, { expenseNoteId: posted, teamId }),
+    ).rejects.toThrow(/already posted/);
 
     const draft = await makeNote({
       number: "2026-003",
@@ -158,9 +168,9 @@ describe("expense notes (M10)", () => {
       lines: [{ code: "611901", amount: 10 }],
       status: "draft",
     });
-    expect(postExpenseNote(db, { expenseNoteId: draft, teamId })).rejects.toThrow(
-      /draft/,
-    );
+    expect(
+      postExpenseNote(db, { expenseNoteId: draft, teamId }),
+    ).rejects.toThrow(/draft/);
 
     const mismatch = await makeNote({
       number: "2026-004",
@@ -189,9 +199,9 @@ describe("expense notes (M10)", () => {
       lines: [{ code: "611901", amount: 25 }],
       director: null,
     });
-    expect(postExpenseNote(db, { expenseNoteId: noRc, teamId })).rejects.toThrow(
-      /R\/C account/,
-    );
+    expect(
+      postExpenseNote(db, { expenseNoteId: noRc, teamId }),
+    ).rejects.toThrow(/R\/C account/);
   });
 
   test("a booked note is frozen: amount edits and deletes are refused", async () => {
@@ -216,6 +226,8 @@ describe("expense notes (M10)", () => {
       ),
     ).rejects.toThrow(/booked/);
     // status must stay writable (posted -> paid)
-    await db.query(`UPDATE expense_notes SET status = 'paid' WHERE id = $1`, [id]);
+    await db.query(`UPDATE expense_notes SET status = 'paid' WHERE id = $1`, [
+      id,
+    ]);
   });
 });

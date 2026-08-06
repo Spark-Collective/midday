@@ -45,7 +45,6 @@ const KIND_LABEL: Record<CashLine["kind"], string> = {
 
 const VIEWS = [
   { key: "upcoming", label: "Upcoming" },
-  { key: "landed", label: "Landed work" },
   { key: "budget", label: "Budget" },
 ] as const;
 type View = (typeof VIEWS)[number]["key"];
@@ -179,9 +178,7 @@ export function CashForecast() {
         </ResponsiveContainer>
       </div>
 
-      {view === "landed" ? (
-        <LandedWork />
-      ) : view === "budget" ? (
+      {view === "budget" ? (
         <BudgetTable currency={data.currency} locale={locale} />
       ) : (
         <div className="border-t border-border">
@@ -211,8 +208,8 @@ export function CashForecast() {
           ))}
           {upcoming.length === 0 && (
             <p className="px-5 py-4 text-xs text-muted-foreground">
-              Nothing dated ahead. Add expected invoice dates to your landed
-              work so the curve means something.
+              Nothing dated ahead. Accept a proposal and its revenue appears
+              here.
             </p>
           )}
         </div>
@@ -227,117 +224,6 @@ export function CashForecast() {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/** Where you say "we landed this, it will be invoiced around then, for this much". */
-function LandedWork() {
-  const trpc = useTRPC();
-  const qc = useQueryClient();
-  const { data: projects } = useQuery(trpc.cashflow.pipeline.queryOptions());
-  const save = useMutation({
-    ...trpc.cashflow.setExpectedInvoice.mutationOptions(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: trpc.cashflow.forecast.queryKey() });
-      qc.invalidateQueries({ queryKey: trpc.cashflow.pipeline.queryKey() });
-    },
-  });
-
-  if (!projects) return <div className="h-24 border-t border-border" />;
-
-  return (
-    <div className="border-t border-border">
-      {projects.map((p: Record<string, unknown>) => (
-        <LandedRow
-          key={String(p.id)}
-          project={p}
-          onSave={(expectedInvoiceDate, contractValue) =>
-            save.mutate({
-              projectId: String(p.id),
-              expectedInvoiceDate,
-              contractValue,
-            })
-          }
-          saving={save.isPending}
-        />
-      ))}
-      {projects.length === 0 && (
-        <p className="px-5 py-4 text-xs text-muted-foreground">
-          No open projects. Landed work is tracked as a project.
-        </p>
-      )}
-      {save.error && (
-        <p className="px-5 py-2 text-xs text-red-600">{save.error.message}</p>
-      )}
-    </div>
-  );
-}
-
-function LandedRow({
-  project,
-  onSave,
-  saving,
-}: {
-  project: Record<string, unknown>;
-  onSave: (date: string | null, value: number | null) => void;
-  saving: boolean;
-}) {
-  const [date, setDate] = useState(
-    (project.expected_invoice_date as string) ?? "",
-  );
-  const [value, setValue] = useState(
-    project.contract_value !== null && project.contract_value !== undefined
-      ? String(project.contract_value)
-      : "",
-  );
-  const invoiced = Number(project.invoiced ?? 0);
-  const dirty =
-    date !== ((project.expected_invoice_date as string) ?? "") ||
-    value !==
-      (project.contract_value !== null && project.contract_value !== undefined
-        ? String(project.contract_value)
-        : "");
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <span className="truncate text-sm">{String(project.name)}</span>
-        {project.customer_name ? (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {String(project.customer_name)}
-          </span>
-        ) : null}
-        {invoiced > 0 ? (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {invoiced.toFixed(0)} invoiced
-          </span>
-        ) : null}
-      </div>
-      <input
-        type="date"
-        className="h-9 w-40 border border-border bg-background px-2 text-sm"
-        value={date}
-        onChange={(e) => setDate(e.target.value)}
-      />
-      <input
-        type="number"
-        min={0}
-        placeholder="Value"
-        className="h-9 w-28 border border-border bg-background px-2 text-sm"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-      />
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={!dirty || saving}
-        onClick={() =>
-          onSave(date || null, value === "" ? null : Number(value))
-        }
-      >
-        Save
-      </Button>
     </div>
   );
 }

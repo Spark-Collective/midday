@@ -96,7 +96,9 @@ export async function postExpenseNote(
     });
   }
   if (lines.length === 0) {
-    throw new LedgerError(`expense note ${note.note_number} has no non-zero lines`);
+    throw new LedgerError(
+      `expense note ${note.note_number} has no non-zero lines`,
+    );
   }
 
   const total = cents(Number(note.total));

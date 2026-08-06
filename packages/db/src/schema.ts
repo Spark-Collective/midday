@@ -2419,13 +2419,6 @@ export const trackerProjects = pgTable(
     // You can use { mode: "bigint" } if numbers are exceeding js number limitations
     estimate: bigint({ mode: "number" }),
     customerId: uuid("customer_id"),
-    // Landed work not yet invoiced: when you expect to bill it, and for what.
-    // contractValue null = hourly, so the value is estimate x rate.
-    expectedInvoiceDate: date("expected_invoice_date"),
-    contractValue: numericCasted("contract_value", {
-      precision: 10,
-      scale: 2,
-    }),
     fts: tsvector("fts")
       .notNull()
       .generatedAlwaysAs(

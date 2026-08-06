@@ -48,7 +48,6 @@ beforeAll(async () => {
 afterEach(async () => {
   await db.query("DELETE FROM invoices WHERE proposal_id IS NOT NULL");
   await db.query("DELETE FROM proposals WHERE team_id = $1", [teamId]);
-  await db.query("DELETE FROM tracker_projects WHERE team_id = $1", [teamId]);
 });
 
 afterAll(async () => {
@@ -92,6 +91,30 @@ describe("writing a proposal", () => {
       }),
       /BOTH an amount and an interval/,
     );
+  });
+
+  test("the funnel's 'viewed' reads as SENT, not as an unsent draft", async () => {
+    const p = await upsertProposal(db, {
+      teamId,
+      customerId,
+      title: "Opened by the client",
+      oneOffAmount: 1000,
+      validUntil: "2026-12-31",
+    });
+    // What the website funnel does when the client opens the share link.
+    await db.query("UPDATE proposals SET status = 'viewed' WHERE id = $1", [
+      p.id,
+    ]);
+    const [row] = await listProposals(db, { teamId });
+    expect(row?.status).toBe("sent");
+    // ...so it can still be accepted, which a 'draft' reading would have blocked.
+    await setProposalStatus(db, {
+      teamId,
+      proposalId: p.id,
+      status: "accepted",
+      expectedInvoiceDate: "2026-10-01",
+    });
+    expect((await listProposals(db, { teamId }))[0]?.status).toBe("accepted");
   });
 
   test("the document body and the SLA round-trip", async () => {
@@ -232,13 +255,11 @@ describe("what reaches the forecast", () => {
     interval?: "month" | "quarter" | "year" | null;
     months?: number | null;
     date?: string;
-    projectId?: string | null;
     vatRate?: number;
   }) {
     const p = await upsertProposal(db, {
       teamId,
       customerId,
-      projectId: input.projectId ?? null,
       title: input.title,
       oneOffAmount: input.oneOff ?? null,
       recurringAmount: input.recurring ?? null,
@@ -364,51 +385,6 @@ describe("what reaches the forecast", () => {
     expect(dates[0]).toBe("2026-10-01");
     expect(dates[1]).toBe("2026-12-31");
     await db.query("DELETE FROM proposals WHERE id = $1", [id]);
-  });
-
-  test("an accepted proposal TAKES OVER its project, so the money is counted once", async () => {
-    const proj = await db.query(
-      `INSERT INTO tracker_projects
-         (team_id, name, customer_id, currency, contract_value, expected_invoice_date)
-       VALUES ($1,'Website build',$2,'EUR',5000,'2026-09-01') RETURNING id`,
-      [teamId, customerId],
-    );
-    const projectId = proj.rows[0].id;
-
-    // Before acceptance the project is the only source.
-    let f = await buildCashForecast(db, {
-      teamId,
-      asOf: ASOF,
-      weeks: 13,
-      months: 6,
-    });
-    expect(
-      f.buckets.flatMap((b) => b.lines).filter((l) => l.amount > 0).length,
-    ).toBe(1);
-
-    const id = await accept({
-      title: "Website build",
-      oneOff: 6000,
-      projectId,
-      date: "2026-09-01",
-    });
-
-    f = await buildCashForecast(db, {
-      teamId,
-      asOf: ASOF,
-      weeks: 13,
-      months: 6,
-    });
-    const inflows = f.buckets
-      .flatMap((b) => b.lines)
-      .filter((l) => l.amount > 0);
-    // Exactly one inflow, and it is the proposal's figure, not the project's.
-    expect(inflows.length).toBe(1);
-    expect(inflows[0]?.kind).toBe("proposal");
-    expect(inflows[0]?.amount).toBe(6000);
-
-    await db.query("DELETE FROM proposals WHERE id = $1", [id]);
-    await db.query("DELETE FROM tracker_projects WHERE id = $1", [projectId]);
   });
 
   test("invoicing against a proposal nets it down rather than adding to it", async () => {

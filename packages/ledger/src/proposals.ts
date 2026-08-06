@@ -70,11 +70,16 @@ const LIFECYCLE = new Set<string>([
 
 /**
  * `status` is TEXT, not an enum, because the website funnel writes this table too
- * and has its own vocabulary. Anything off the lifecycle is treated as a draft:
- * an unrecognised status must degrade to "not money yet", never crash and never
- * silently count as revenue.
+ * and has its own vocabulary.
+ *
+ * `viewed` is the one that matters: the funnel sets it when the client OPENS the
+ * share link, so it means sent-and-read. Folding it into the generic unknown
+ * bucket would make a live offer look like an unsent draft and hide the accept
+ * action. Anything genuinely unrecognised degrades to `draft`, which is the safe
+ * direction: never crash, and never silently count as revenue.
  */
 function asStatus(value: string): ProposalStatus {
+  if (value === "viewed") return "sent";
   return LIFECYCLE.has(value) ? (value as ProposalStatus) : "draft";
 }
 
@@ -202,10 +207,8 @@ export async function upsertProposal(
 /**
  * Move a proposal along its lifecycle.
  *
- * Accepting is the moment money becomes forecastable, so it demands the two
- * things the forecast needs and cannot infer: WHEN the one-off gets billed, and
- * (if the proposal is tied to a project) that the project stops carrying its own
- * competing figures.
+ * Accepting is the moment money becomes forecastable, so it demands the one
+ * thing the forecast needs and cannot infer: WHEN the one-off gets billed.
  */
 export async function setProposalStatus(
   client: PoolClient,
@@ -260,18 +263,6 @@ export async function setProposalStatus(
       input.teamId,
     ],
   );
-
-  // One source of truth for the same money. The project keeps its fields for
-  // work that never had a proposal; where a proposal exists it wins, so the two
-  // can never disagree in the forecast.
-  if (input.status === "accepted" && row.project_id) {
-    await client.query(
-      `UPDATE tracker_projects
-          SET expected_invoice_date = NULL, contract_value = NULL
-        WHERE id = $1 AND team_id = $2`,
-      [row.project_id, input.teamId],
-    );
-  }
 
   return { status: input.status };
 }

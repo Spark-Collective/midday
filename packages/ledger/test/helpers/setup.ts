@@ -54,6 +54,22 @@ const M40 = readFileSync(
   "utf8",
 );
 
+const M48 = readFileSync(
+  join(
+    import.meta.dir,
+    "../../../db/migrations/0048_drop_project_forecast_fields.sql",
+  ),
+  "utf8",
+);
+
+const M47 = readFileSync(
+  join(
+    import.meta.dir,
+    "../../../db/migrations/0047_proposal_status_withdrawn.sql",
+  ),
+  "utf8",
+);
+
 const M46 = readFileSync(
   join(import.meta.dir, "../../../db/migrations/0046_proposal_vat.sql"),
   "utf8",
@@ -139,7 +155,10 @@ const BOOTSTRAP = `
     title text NOT NULL, summary text,
     content jsonb NOT NULL DEFAULT '[]'::jsonb, ai_context jsonb,
     currency text NOT NULL DEFAULT 'EUR',
-    status text NOT NULL DEFAULT 'draft',
+    -- The funnel's own CHECK, mirrored so a status it rejects fails HERE too.
+    -- 'withdrawn' is absent on purpose: migration 0047 is what adds it.
+    status text NOT NULL DEFAULT 'draft'
+      CHECK (status IN ('draft','sent','viewed','accepted','declined','expired')),
     expires_at date,
     first_viewed_at timestamptz, last_viewed_at timestamptz,
     view_count integer NOT NULL DEFAULT 0, owner text,
@@ -168,6 +187,8 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M44);
   await db.query(M45);
   await db.query(M46);
+  await db.query(M47);
+  await db.query(M48);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );
