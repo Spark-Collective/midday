@@ -112,8 +112,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete images-main --yes 2>/dev/null || true
+          # --cleanup-tag matters: a plain `release delete` leaves the git tag
+          # behind, and the next `create` then dies with 422 "tag_name already
+          # exists". The old `git push --delete` was meant to cover that but
+          # swallowed its own failure with `|| true`, so the breakage was silent
+          # and only showed up as a skipped publish and a stale deploy.
+          gh release delete images-main --yes --cleanup-tag 2>/dev/null || true
           git push --delete origin refs/tags/images-main 2>/dev/null || true
+          # Falling back to `upload --clobber` keeps this idempotent if the
+          # release survives the delete for any reason: a re-run must be able to
+          # republish rather than leaving deploy boxes with no assets to pull.
           gh release create images-main --title "Rolling deploy images (main, arm64)" \
             --notes "docker image tars for deploy boxes: curl, zstd -d, docker load" \
-            midday-api-arm64.tar.zst midday-worker-arm64.tar.zst midday-dashboard-arm64.tar.zst
+            midday-api-arm64.tar.zst midday-worker-arm64.tar.zst midday-dashboard-arm64.tar.zst \
+            || gh release upload images-main \
+                 midday-api-arm64.tar.zst midday-worker-arm64.tar.zst midday-dashboard-arm64.tar.zst \
+                 --clobber
