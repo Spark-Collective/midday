@@ -498,6 +498,7 @@ export async function buildCashForecast(
     `SELECT p.id, p.number, p.title, p.customer_id, p.currency,
             p.one_off_amount::float8 AS one_off_amount,
             p.recurring_amount::float8 AS recurring_amount,
+            p.vat_rate::float8 AS vat_rate,
             p.recurring_interval, p.recurring_months,
             p.expected_invoice_date::text AS expected_invoice_date,
             p.decided_at::date::text AS decided_on,
@@ -518,8 +519,14 @@ export async function buildCashForecast(
     }
     const lag = byCustomer.get(row.customer_id) ?? teamDefault;
 
+    // Proposals are quoted NET; cash and invoices.amount are GROSS. Gross up
+    // before comparing the two, or an 11.000 offer against a 2.420 invoice
+    // subtracts a VAT-inclusive figure from a VAT-exclusive one.
+    const gross = (n: number) => n * (1 + Number(row.vat_rate ?? 0) / 100);
+
     // The one-off, less anything already invoiced against this proposal.
-    const oneOff = Number(row.one_off_amount ?? 0) - Number(row.invoiced);
+    const oneOff =
+      gross(Number(row.one_off_amount ?? 0)) - Number(row.invoiced);
     if (oneOff > 0 && row.expected_invoice_date) {
       lines.push({
         date: addDays(
@@ -552,7 +559,7 @@ export async function buildCashForecast(
         if (paid > horizonEnd) break;
         lines.push({
           date: paid,
-          amount: r2(Number(row.recurring_amount)),
+          amount: r2(gross(Number(row.recurring_amount))),
           kind: "proposal",
           label: `${row.number} ${row.title} (${row.recurring_interval}ly)`,
           sourceId: row.id,

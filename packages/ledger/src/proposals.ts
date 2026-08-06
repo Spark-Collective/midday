@@ -41,6 +41,8 @@ export type ProposalInput = {
   bodyMd?: string | null;
   sla?: Record<string, unknown> | null;
   documentUrl?: string | null;
+  /** Percent. 21 = Belgian standard; 0 for reverse charge or non-EU. */
+  vatRate?: number | null;
 };
 
 /**
@@ -135,7 +137,8 @@ export async function upsertProposal(
          one_off_amount = $5, recurring_amount = $6, recurring_interval = $7,
          recurring_months = $8, expires_at = $9, expected_invoice_date = $10,
          body_md = COALESCE($11, body_md), sla = COALESCE($12::jsonb, sla),
-         document_url = COALESCE($13, document_url), updated_at = now()
+         document_url = COALESCE($13, document_url),
+         vat_rate = COALESCE($16, vat_rate), updated_at = now()
        WHERE id = $14 AND team_id = $15
        RETURNING id, number`,
       [
@@ -154,6 +157,7 @@ export async function upsertProposal(
         input.documentUrl ?? null,
         input.id,
         input.teamId,
+        input.vatRate ?? null,
       ],
     );
     return r.rows[0];
@@ -168,9 +172,10 @@ export async function upsertProposal(
        (team_id, customer_id, project_id, number, title, currency,
         one_off_amount, recurring_amount, recurring_interval, recurring_months,
         expires_at, expected_invoice_date, body_md, sla, document_url,
-        client_name)
+        client_name, vat_rate)
      VALUES ($1,$2,$3,$4,$5,COALESCE($6,'EUR'),$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,
-             COALESCE((SELECT name FROM customers WHERE id = $2), $5))
+             COALESCE((SELECT name FROM customers WHERE id = $2), $5),
+             COALESCE($16, 21))
      RETURNING id, number, token`,
     [
       input.teamId,
@@ -188,6 +193,7 @@ export async function upsertProposal(
       input.bodyMd ?? null,
       input.sla ? JSON.stringify(input.sla) : null,
       input.documentUrl ?? null,
+      input.vatRate ?? null,
     ],
   );
   return r.rows[0];
@@ -286,6 +292,7 @@ export type ProposalRow = {
   validUntil: string | null;
   expectedInvoiceDate: string | null;
   documentUrl: string | null;
+  vatRate: number;
   sentAt: string | null;
   decidedAt: string | null;
   invoiced: number;
@@ -309,6 +316,7 @@ export async function listProposals(
             p.recurring_amount::float8 AS recurring_amount,
             p.recurring_interval, p.recurring_months,
             p.expires_at::text AS valid_until,
+            p.vat_rate::float8 AS vat_rate,
             p.expected_invoice_date::text AS expected_invoice_date,
             p.document_url, p.sent_at, p.decided_at,
             ${input.includeBody ? "p.body_md, p.sla," : ""}
@@ -341,6 +349,7 @@ export async function listProposals(
     validUntil: x.valid_until,
     expectedInvoiceDate: x.expected_invoice_date,
     documentUrl: x.document_url,
+    vatRate: x.vat_rate,
     sentAt: x.sent_at,
     decidedAt: x.decided_at,
     invoiced: x.invoiced,

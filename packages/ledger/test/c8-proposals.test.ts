@@ -233,6 +233,7 @@ describe("what reaches the forecast", () => {
     months?: number | null;
     date?: string;
     projectId?: string | null;
+    vatRate?: number;
   }) {
     const p = await upsertProposal(db, {
       teamId,
@@ -244,6 +245,7 @@ describe("what reaches the forecast", () => {
       recurringInterval: input.interval ?? null,
       recurringMonths: input.months ?? null,
       validUntil: "2026-12-31",
+      vatRate: input.vatRate ?? 0,
     });
     await setProposalStatus(db, { teamId, proposalId: p.id, status: "sent" });
     await setProposalStatus(db, {
@@ -263,6 +265,7 @@ describe("what reaches the forecast", () => {
       oneOffAmount: 8000,
       expectedInvoiceDate: "2026-09-01",
       validUntil: "2026-12-31",
+      vatRate: 0,
     });
     await setProposalStatus(db, { teamId, proposalId: p.id, status: "sent" });
     let f = await buildCashForecast(db, {
@@ -295,6 +298,26 @@ describe("what reaches the forecast", () => {
     expect(line?.amount).toBe(8000);
 
     await db.query("DELETE FROM proposals WHERE id = $1", [p.id]);
+  });
+
+  test("a NET offer reaches the forecast GROSS, because that is what moves", async () => {
+    const id = await accept({
+      title: "Belgian client",
+      oneOff: 10000,
+      date: "2026-09-01",
+      vatRate: 21,
+    });
+    const f = await buildCashForecast(db, {
+      teamId,
+      asOf: ASOF,
+      weeks: 13,
+      months: 6,
+    });
+    const line = f.buckets
+      .flatMap((b) => b.lines)
+      .find((l) => l.sourceId === id);
+    // 10.000 quoted, 12.100 actually lands in the bank.
+    expect(line?.amount).toBe(12100);
   });
 
   test("a retainer repeats over its committed term, not forever", async () => {

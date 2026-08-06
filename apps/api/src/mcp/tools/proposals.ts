@@ -135,6 +135,14 @@ export const registerProposalTools: RegisterTools = (server, ctx) => {
               "Queryable SLA terms, e.g. { responseTime: '1 business day', noticePeriodDays: 30 }",
             ),
           documentUrl: z.string().optional(),
+          vatRate: z.coerce
+            .number()
+            .min(0)
+            .max(100)
+            .optional()
+            .describe(
+              "VAT percent on the quoted amounts. Defaults to 21 (Belgian standard). Use 0 for intra-EU reverse charge and non-EU customers. Amounts are quoted NET; the forecast grosses them up because that is what actually lands in the bank.",
+            ),
         },
         outputSchema: { data: z.record(z.string(), z.any()) },
         annotations: WRITE_ANNOTATIONS,

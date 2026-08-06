@@ -81,6 +81,7 @@ export const proposalsRouter = createTRPCRouter({
         bodyMd: z.string().nullable().optional(),
         sla: z.record(z.string(), z.unknown()).nullable().optional(),
         documentUrl: z.string().url().nullable().optional(),
+        vatRate: z.number().min(0).max(100).nullable().optional(),
       }),
     )
     .mutation(async ({ ctx: { teamId }, input }) =>

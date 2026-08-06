@@ -54,6 +54,11 @@ const M40 = readFileSync(
   "utf8",
 );
 
+const M46 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0046_proposal_vat.sql"),
+  "utf8",
+);
+
 const M45 = readFileSync(
   join(import.meta.dir, "../../../db/migrations/0045_proposals.sql"),
   "utf8",
@@ -162,6 +167,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M43);
   await db.query(M44);
   await db.query(M45);
+  await db.query(M46);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );
