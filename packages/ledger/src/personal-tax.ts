@@ -36,10 +36,13 @@ export const DIRECTOR_BOXES = {
   },
   /** Benefits in kind, reported inside the same box as remuneration. */
   benefitsInKind: { vak: "XVI", code: "1400", label: "Voordelen alle aard" },
-  /** Bedrijfsvoorheffing already withheld by the company. */
+  /** Bedrijfsvoorheffing already withheld by the company.
+   *  Code 1407, not 1225: 1225 is the employee box in vak IV. Verified against
+   *  Spark's Tax-on-Web calculation for aanslagjaar 2026 (income 2025), which
+   *  reports the director's bedrijfsvoorheffing under 1407. */
   withholding: {
     vak: "XVI",
-    code: "1225",
+    code: "1407",
     label: "Ingehouden bedrijfsvoorheffing",
   },
   /** Social contributions paid personally — deductible professional expense. */
