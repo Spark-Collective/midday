@@ -127,6 +127,20 @@ const BOOTSTRAP = `
     team_id uuid NOT NULL, name text, currency text,
     balance numeric(14,2) DEFAULT 0, enabled boolean DEFAULT true
   );
+  CREATE TABLE proposals (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    token text UNIQUE NOT NULL DEFAULT gen_random_uuid()::text,
+    deal_id uuid, organization_id uuid, client_name text,
+    title text NOT NULL, summary text,
+    content jsonb NOT NULL DEFAULT '[]'::jsonb, ai_context jsonb,
+    currency text NOT NULL DEFAULT 'EUR',
+    status text NOT NULL DEFAULT 'draft',
+    expires_at date,
+    first_viewed_at timestamptz, last_viewed_at timestamptz,
+    view_count integer NOT NULL DEFAULT 0, owner text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  );
   CREATE TABLE tracker_projects (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     team_id uuid NOT NULL, name text NOT NULL, customer_id uuid,

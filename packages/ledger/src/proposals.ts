@@ -57,6 +57,25 @@ const ALLOWED_TRANSITIONS: Record<ProposalStatus, ProposalStatus[]> = {
   withdrawn: [],
 };
 
+const LIFECYCLE = new Set<string>([
+  "draft",
+  "sent",
+  "accepted",
+  "declined",
+  "expired",
+  "withdrawn",
+]);
+
+/**
+ * `status` is TEXT, not an enum, because the website funnel writes this table too
+ * and has its own vocabulary. Anything off the lifecycle is treated as a draft:
+ * an unrecognised status must degrade to "not money yet", never crash and never
+ * silently count as revenue.
+ */
+function asStatus(value: string): ProposalStatus {
+  return LIFECYCLE.has(value) ? (value as ProposalStatus) : "draft";
+}
+
 /** P-2026-001, per team, per year. Never the invoice sequence. */
 export async function nextProposalNumber(
   client: PoolClient,
@@ -77,7 +96,7 @@ export async function nextProposalNumber(
 export async function upsertProposal(
   client: PoolClient,
   input: ProposalInput,
-): Promise<{ id: string; number: string }> {
+): Promise<{ id: string; number: string; token?: string }> {
   if (!input.title?.trim()) throw new LedgerError("a proposal needs a title");
 
   const recurringAmount = input.recurringAmount ?? null;
@@ -114,7 +133,7 @@ export async function upsertProposal(
       `UPDATE proposals SET
          customer_id = $1, project_id = $2, title = $3, currency = COALESCE($4, currency),
          one_off_amount = $5, recurring_amount = $6, recurring_interval = $7,
-         recurring_months = $8, valid_until = $9, expected_invoice_date = $10,
+         recurring_months = $8, expires_at = $9, expected_invoice_date = $10,
          body_md = COALESCE($11, body_md), sla = COALESCE($12::jsonb, sla),
          document_url = COALESCE($13, document_url), updated_at = now()
        WHERE id = $14 AND team_id = $15
@@ -148,9 +167,11 @@ export async function upsertProposal(
     `INSERT INTO proposals
        (team_id, customer_id, project_id, number, title, currency,
         one_off_amount, recurring_amount, recurring_interval, recurring_months,
-        valid_until, expected_invoice_date, body_md, sla, document_url)
-     VALUES ($1,$2,$3,$4,$5,COALESCE($6,'EUR'),$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
-     RETURNING id, number`,
+        expires_at, expected_invoice_date, body_md, sla, document_url,
+        client_name)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,'EUR'),$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,
+             COALESCE((SELECT name FROM customers WHERE id = $2), $5))
+     RETURNING id, number, token`,
     [
       input.teamId,
       input.customerId ?? null,
@@ -199,7 +220,7 @@ export async function setProposalStatus(
   );
   if (r.rowCount === 0) throw new LedgerError("proposal not found");
   const row = r.rows[0];
-  const from = row.status as ProposalStatus;
+  const from = asStatus(row.status);
 
   if (from === input.status) return { status: from };
   if (!ALLOWED_TRANSITIONS[from].includes(input.status)) {
@@ -217,11 +238,11 @@ export async function setProposalStatus(
 
   await client.query(
     `UPDATE proposals
-        SET status = $1::proposal_status,
+        SET status = $1,
             expected_invoice_date = COALESCE($2::date, expected_invoice_date),
-            sent_at = CASE WHEN $1::text = 'sent'
+            sent_at = CASE WHEN $1 = 'sent'
                            THEN COALESCE(sent_at, now()) ELSE sent_at END,
-            decided_at = CASE WHEN $1::text IN ('accepted','declined','expired','withdrawn')
+            decided_at = CASE WHEN $1 IN ('accepted','declined','expired','withdrawn')
                               THEN COALESCE($3::timestamptz, now()) ELSE decided_at END,
             updated_at = now()
       WHERE id = $4 AND team_id = $5`,
@@ -287,7 +308,7 @@ export async function listProposals(
             p.one_off_amount::float8 AS one_off_amount,
             p.recurring_amount::float8 AS recurring_amount,
             p.recurring_interval, p.recurring_months,
-            p.valid_until::text AS valid_until,
+            p.expires_at::text AS valid_until,
             p.expected_invoice_date::text AS expected_invoice_date,
             p.document_url, p.sent_at, p.decided_at,
             ${input.includeBody ? "p.body_md, p.sla," : ""}
@@ -308,7 +329,7 @@ export async function listProposals(
     id: x.id,
     number: x.number,
     title: x.title,
-    status: x.status,
+    status: asStatus(x.status),
     customerId: x.customer_id,
     customerName: x.customer_name,
     projectId: x.project_id,
@@ -342,8 +363,8 @@ export async function expireLapsedProposals(
     `UPDATE proposals
         SET status = 'expired', decided_at = now(), updated_at = now()
       WHERE team_id = $1 AND status = 'sent'
-        AND valid_until IS NOT NULL
-        AND valid_until < COALESCE($2::date, CURRENT_DATE)`,
+        AND expires_at IS NOT NULL
+        AND expires_at < COALESCE($2::date, CURRENT_DATE)`,
     [input.teamId, input.asOf ?? null],
   );
   return { expired: r.rowCount ?? 0 };

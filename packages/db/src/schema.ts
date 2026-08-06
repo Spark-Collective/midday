@@ -148,15 +148,6 @@ export const invoiceTypeEnum = pgEnum("invoice_type", [
   "credit_note",
 ]);
 
-export const proposalStatusEnum = pgEnum("proposal_status", [
-  "draft",
-  "sent",
-  "accepted",
-  "declined",
-  "expired",
-  "withdrawn",
-]);
-
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "draft",
   "overdue",
@@ -4857,9 +4848,26 @@ export const proposals = pgTable(
     projectId: uuid("project_id"),
     // Own sequence (P-2026-001). Never the invoice sequence: a proposal is not
     // a taxable event and must never reach the VAT listings.
-    number: text().notNull(),
+    number: text(),
     title: text().notNull(),
-    status: proposalStatusEnum().default("draft").notNull(),
+    // Pre-existing funnel columns: the share link and view tracking.
+    token: text().notNull(),
+    clientName: text("client_name"),
+    summary: text(),
+    content: jsonb().default([]).notNull(),
+    dealId: uuid("deal_id"),
+    organizationId: uuid("organization_id"),
+    firstViewedAt: timestamp("first_viewed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    lastViewedAt: timestamp("last_viewed_at", {
+      withTimezone: true,
+      mode: "string",
+    }),
+    viewCount: integer("view_count").default(0).notNull(),
+    // TEXT, not an enum: the website funnel writes its own values here.
+    status: text().default("draft").notNull(),
     currency: text().default("EUR").notNull(),
     oneOffAmount: numericCasted("one_off_amount", { precision: 12, scale: 2 }),
     recurringAmount: numericCasted("recurring_amount", {
@@ -4868,7 +4876,8 @@ export const proposals = pgTable(
     }),
     recurringInterval: text("recurring_interval"),
     recurringMonths: integer("recurring_months"),
-    validUntil: date("valid_until"),
+    // Reused as valid-until rather than adding a second column meaning the same.
+    expiresAt: date("expires_at"),
     expectedInvoiceDate: date("expected_invoice_date"),
     // The document itself, SLA included.
     bodyMd: text("body_md"),

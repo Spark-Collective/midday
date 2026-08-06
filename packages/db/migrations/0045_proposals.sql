@@ -1,89 +1,115 @@
 -- 0045_proposals.sql
--- Proposals: the priced offer plus the service-level agreement, as one document.
+-- Bring the existing `proposals` table into Midday, rather than building a second one.
 --
--- DELIBERATELY NOT AN INVOICE STATUS. `listings.ts` selects invoices with
--- `status NOT IN ('draft','canceled','scheduled')`, a DENYLIST, so a new 'quote'
--- status would be included by default and every quote sent would land in the VAT
--- client listing and the IC statement. Belgian invoice numbering must also be
--- unbroken and every invoice is a taxable event; a proposal is neither. Separate
--- table, separate number sequence, no path into the ledger.
+-- `public.proposals` already existed, written by the Spark website funnel: a
+-- shareable proposal page with a token, view tracking (first_viewed_at,
+-- view_count) and jsonb content blocks. It held the live Pulse Foundation
+-- proposal. Creating a parallel table would have put the same document in two
+-- places, which is exactly what a proposals system is supposed to stop.
 --
--- The body is markdown because a Spark proposal is prose (scope, why, pricing
--- table, SLA, caveats, next steps), not line items, and because it is authored by
--- Claude Code rather than typed into a form.
+-- So this migration is ADDITIVE ONLY. Every existing column keeps its meaning,
+-- the share token and view tracking keep working, and Midday adds what was
+-- missing: team scoping, the commercial core the cash forecast reads, and the
+-- accept lifecycle.
+--
+-- DELIBERATELY NOT AN INVOICE. `listings.ts` selects invoices with
+-- `status NOT IN ('draft','canceled','scheduled')`, a DENYLIST, so folding
+-- proposals into invoices would put every quote into the VAT client listing and
+-- the IC statement. Belgian invoice numbering must also be unbroken and every
+-- invoice is a taxable event. A proposal is neither.
 
-CREATE TYPE "proposal_status" AS ENUM (
-  'draft', 'sent', 'accepted', 'declined', 'expired', 'withdrawn'
-);
+-- Litter from the first attempt at this migration, before the collision was
+-- found. `status` deliberately stays TEXT: the funnel writes values of its own
+-- ('viewed'), and an enum would make a stray write from a system this migration
+-- cannot see fail hard instead of degrade.
+DROP TYPE IF EXISTS "proposal_status";
 --> statement-breakpoint
 
-CREATE TABLE "proposals" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "team_id" uuid NOT NULL REFERENCES "teams"("id") ON DELETE CASCADE,
-  "customer_id" uuid REFERENCES "customers"("id") ON DELETE SET NULL,
-  -- Set when the work is tracked as a project. Accepting a proposal that has one
-  -- takes over that project's expected invoice figures, so they cannot disagree.
-  "project_id" uuid REFERENCES "tracker_projects"("id") ON DELETE SET NULL,
+ALTER TABLE "proposals"
+  -- Team scoping, so the app can see it under the same RLS model as everything
+  -- else. Nullable: rows written by the funnel before this have no team, and
+  -- they stay invisible to the app until claimed rather than leaking.
+  ADD COLUMN IF NOT EXISTS "team_id" uuid REFERENCES "teams"("id") ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS "customer_id" uuid REFERENCES "customers"("id") ON DELETE SET NULL,
+  -- Accepting a proposal that has a project takes over that project's expected
+  -- invoice figures, so the same money is never forecast from two places.
+  ADD COLUMN IF NOT EXISTS "project_id" uuid REFERENCES "tracker_projects"("id") ON DELETE SET NULL,
   -- Own sequence (P-2026-001). Never the invoice sequence.
-  "number" text NOT NULL,
-  "title" text NOT NULL,
-  "status" "proposal_status" DEFAULT 'draft' NOT NULL,
-  "currency" text DEFAULT 'EUR' NOT NULL,
+  ADD COLUMN IF NOT EXISTS "number" text,
 
   -- The commercial core: the only part the cash forecast reads.
-  "one_off_amount" numeric(12, 2),
-  "recurring_amount" numeric(12, 2),
-  "recurring_interval" text,           -- 'month' | 'quarter' | 'year'
+  ADD COLUMN IF NOT EXISTS "one_off_amount" numeric(12, 2),
+  ADD COLUMN IF NOT EXISTS "recurring_amount" numeric(12, 2),
+  ADD COLUMN IF NOT EXISTS "recurring_interval" text,
   -- Committed term in months; NULL means until cancelled.
-  "recurring_months" integer,
+  ADD COLUMN IF NOT EXISTS "recurring_months" integer,
+  -- When the one-off gets billed. Acceptance date is not invoice date: signing
+  -- in September for delivery in November is normal.
+  ADD COLUMN IF NOT EXISTS "expected_invoice_date" date,
 
-  "valid_until" date,
-  -- When the one-off will actually be billed. Acceptance date is not invoice
-  -- date: signing in September for delivery in November is normal.
-  "expected_invoice_date" date,
+  -- The document as markdown, including the SLA section. `content` (jsonb
+  -- blocks) stays for the funnel's renderer; this is what Claude Code writes.
+  ADD COLUMN IF NOT EXISTS "body_md" text,
+  -- The few SLA terms worth querying later (responseTime, noticePeriodDays...).
+  -- The prose lives in body_md.
+  ADD COLUMN IF NOT EXISTS "sla" jsonb,
+  ADD COLUMN IF NOT EXISTS "document_url" text,
 
-  -- The document itself, including the SLA prose.
-  "body_md" text,
-  -- The handful of SLA commitments worth being able to query later
-  -- (responseTime, supportWindow, noticePeriodDays, uptime). Prose lives in body_md.
-  "sla" jsonb,
-  -- Where the sent artifact lives (SharePoint, the workspace PDF). The app does
-  -- not render PDFs: that already works where these documents are written.
-  "document_url" text,
-
-  "sent_at" timestamp with time zone,
-  "decided_at" timestamp with time zone,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-
-  CONSTRAINT "proposals_team_number_unique" UNIQUE ("team_id", "number"),
-  CONSTRAINT "proposals_recurring_interval_valid" CHECK (
-    "recurring_interval" IS NULL
-    OR "recurring_interval" IN ('month', 'quarter', 'year')
-  ),
-  -- A recurring amount without an interval is unforecastable, and an interval
-  -- without an amount is noise. Refuse both at the door.
-  CONSTRAINT "proposals_recurring_complete" CHECK (
-    ("recurring_amount" IS NULL) = ("recurring_interval" IS NULL)
-  )
-);
+  ADD COLUMN IF NOT EXISTS "sent_at" timestamp with time zone,
+  ADD COLUMN IF NOT EXISTS "decided_at" timestamp with time zone;
 --> statement-breakpoint
 
+-- `expires_at` (date) already means valid-until, so it is reused rather than
+-- duplicated by a second column meaning the same thing.
+
+ALTER TABLE "proposals"
+  ADD CONSTRAINT "proposals_recurring_interval_valid" CHECK (
+    "recurring_interval" IS NULL
+    OR "recurring_interval" IN ('month', 'quarter', 'year')
+  );
+--> statement-breakpoint
+
+-- A recurring amount with no interval is unforecastable; an interval with no
+-- amount is noise. Refuse both at the door.
+ALTER TABLE "proposals"
+  ADD CONSTRAINT "proposals_recurring_complete" CHECK (
+    ("recurring_amount" IS NULL) = ("recurring_interval" IS NULL)
+  );
+--> statement-breakpoint
+
+-- 'viewed' carried two facts at once: it was sent, and the client opened it.
+-- The second already lives in first_viewed_at/view_count, so collapsing the
+-- status to 'sent' loses nothing and puts the row on the lifecycle.
+UPDATE "proposals"
+   SET "status" = 'sent',
+       "sent_at" = COALESCE("sent_at", "created_at")
+ WHERE "status" = 'viewed';
+--> statement-breakpoint
+
+CREATE UNIQUE INDEX IF NOT EXISTS "proposals_team_number_unique"
+  ON "proposals" ("team_id", "number")
+  WHERE "team_id" IS NOT NULL AND "number" IS NOT NULL;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "proposals_team_status_idx" ON "proposals" ("team_id", "status");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "proposals_customer_idx" ON "proposals" ("customer_id");
+--> statement-breakpoint
+
+-- RLS was already enabled on this table but carried NO policies, so only the
+-- service key could reach it. This adds the standard team policy without
+-- removing anything.
 ALTER TABLE "proposals" ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+DROP POLICY IF EXISTS "Team members can manage proposals" ON "proposals";
 --> statement-breakpoint
 CREATE POLICY "Team members can manage proposals" ON "proposals" AS PERMISSIVE FOR ALL TO public USING (team_id IN ( SELECT private.get_teams_for_authenticated_user() AS get_teams_for_authenticated_user));
 --> statement-breakpoint
 
-CREATE INDEX "proposals_team_status_idx" ON "proposals" ("team_id", "status");
---> statement-breakpoint
-CREATE INDEX "proposals_customer_idx" ON "proposals" ("customer_id");
---> statement-breakpoint
-
 -- Which proposal an invoice bills, so the forecast can net an accepted offer
--- against what has already been invoiced against it. Same reason invoices carry
--- project_id: netting by customer and date is a guess, and a guess about money
--- that is usually right is still the wrong shape.
+-- against what has already been invoiced. Same reason invoices carry project_id:
+-- netting by customer and date is a guess, and a guess about money that is
+-- usually right is still the wrong shape.
 ALTER TABLE "invoices"
-  ADD COLUMN "proposal_id" uuid REFERENCES "proposals"("id") ON DELETE SET NULL;
+  ADD COLUMN IF NOT EXISTS "proposal_id" uuid REFERENCES "proposals"("id") ON DELETE SET NULL;
 --> statement-breakpoint
-CREATE INDEX "invoices_proposal_id_idx" ON "invoices" ("proposal_id");
+CREATE INDEX IF NOT EXISTS "invoices_proposal_id_idx" ON "invoices" ("proposal_id");
