@@ -20,6 +20,49 @@
 
 export type PitBracket = { ceiling: number; rate: number };
 
+/**
+ * Bands of the belastingkrediet voor lage activiteitsinkomsten (art. 289ter
+ * WIB 92), as indexed per assessment year. The credit is a trapezoid over the
+ * net activity income:
+ *
+ *        maxCredit  ┌──────────────┐
+ *                  /                \
+ *   0 ────────────┘                  └──────────
+ *          partialMin  fullMin   fullMax  partialMax
+ */
+export type LowActivityIncomeCreditBands = {
+  /** Below this, no credit at all. */
+  partialMin: number;
+  /** From here the full credit applies. */
+  fullMin: number;
+  /** Up to here the full credit still applies. */
+  fullMax: number;
+  /** Above this, no credit at all. */
+  partialMax: number;
+  maxCredit: number;
+};
+
+/** The trapezoid itself; exported so the bands can be tested directly. */
+export function computeLowActivityIncomeCredit(
+  bands: LowActivityIncomeCreditBands | undefined,
+  netActivityIncome: number,
+): number {
+  if (!bands) return 0;
+  const { partialMin, fullMin, fullMax, partialMax, maxCredit } = bands;
+  if (netActivityIncome <= partialMin || netActivityIncome >= partialMax) {
+    return 0;
+  }
+  if (netActivityIncome < fullMin) {
+    return r2(
+      (maxCredit * (netActivityIncome - partialMin)) / (fullMin - partialMin),
+    );
+  }
+  if (netActivityIncome <= fullMax) return maxCredit;
+  return r2(
+    (maxCredit * (partialMax - netActivityIncome)) / (partialMax - fullMax),
+  );
+}
+
 export type PitParameters = {
   incomeYear: number;
   /** Ascending; the last one is the top rate (use Infinity as its ceiling). */
@@ -32,6 +75,12 @@ export type PitParameters = {
   lumpSumExpenseCap: number;
   /** Federal tax is reduced by this % ("autonomiefactor"); the region taxes the rest. */
   federalAutonomyFactorPct: number;
+  /**
+   * Belastingkrediet voor lage activiteitsinkomsten (art. 289ter WIB 92).
+   * Omitted = not modelled for that year, and the credit is simply not applied
+   * (the computation then understates any refund, which the warnings say).
+   */
+  lowActivityIncomeCredit?: LowActivityIncomeCreditBands;
   regionalSurchargePct: number;
   municipalSurchargePct: number;
   /** True when every parameter above has been verified against the source. */
@@ -212,10 +261,30 @@ export function computePersonalTax(
     note: `${totalPrincipal.toFixed(2)} x ${params.municipalSurchargePct}%`,
   });
 
+  // Belastingkrediet voor lage activiteitsinkomsten (art. 289ter WIB 92): a
+  // refundable credit on modest activity income. Trapezoid over the net
+  // activity income: it phases in, sits at the maximum, then phases out.
+  const lowIncomeCredit = computeLowActivityIncomeCredit(
+    params.lowActivityIncomeCredit,
+    netTaxableIncome,
+  );
+  if (lowIncomeCredit > 0) {
+    const b = params.lowActivityIncomeCredit!;
+    steps.push({
+      label: "Belastingkrediet lage activiteitsinkomsten",
+      amount: -lowIncomeCredit,
+      note:
+        netTaxableIncome > b.fullMax
+          ? `${b.maxCredit} x (${b.partialMax} - ${netTaxableIncome.toFixed(2)}) / ${b.partialMax - b.fullMax}`
+          : `art. 289ter, volledig krediet`,
+    });
+  }
+
   const totalCredits = r2(
     input.withholding +
       (input.advancePayments ?? 0) +
       (input.otherCredits ?? 0) +
+      lowIncomeCredit +
       separateWithholding,
   );
   steps.push({
@@ -293,6 +362,12 @@ export const PIT_PARAMETER_KEYS = [
   "pit_lump_sum_expense_cap_director",
   "pit_federal_autonomy_factor_pct",
   "pit_regional_surcharge_pct",
+  // Belastingkrediet lage activiteitsinkomsten (art. 289ter WIB 92)
+  "pit_low_activity_credit_partial_min",
+  "pit_low_activity_credit_full_min",
+  "pit_low_activity_credit_full_max",
+  "pit_low_activity_credit_partial_max",
+  "pit_low_activity_credit_max",
 ] as const;
 
 /** Assemble PitParameters from resolved rows; throws on anything missing. */
@@ -335,6 +410,18 @@ export function toPitParameters(
     federalAutonomyFactorPct: need("pit_federal_autonomy_factor_pct"),
     regionalSurchargePct: need("pit_regional_surcharge_pct"),
     municipalSurchargePct,
+    // Optional as a set: a year whose 289ter bands were never loaded simply
+    // gets no credit, rather than a guessed one.
+    lowActivityIncomeCredit:
+      values.pit_low_activity_credit_max === undefined
+        ? undefined
+        : {
+            partialMin: need("pit_low_activity_credit_partial_min"),
+            fullMin: need("pit_low_activity_credit_full_min"),
+            fullMax: need("pit_low_activity_credit_full_max"),
+            partialMax: need("pit_low_activity_credit_partial_max"),
+            maxCredit: need("pit_low_activity_credit_max"),
+          },
     verified,
   };
 }
