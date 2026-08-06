@@ -156,8 +156,23 @@ export async function buildPersonalTaxPack(
   const remuneration = debitOf("director_remuneration");
   push("remuneration", remuneration, "ledger", ["director_remuneration"]);
 
+  // Benefits in kind are taxable GROSS. The company books each benefit as a
+  // cost and contras it to a 746xxx recovery so the payroll journal balances
+  // and the P&L nets to zero, but that contra is bookkeeping, not a payment by
+  // the director: the fiche 281.20 reports the benefit in full.
+  //
+  // Proven against Spark's 2024 fiche (code 400 = 31.046,33):
+  //   618000 remuneration              25.312,60
+  //   VAA car/phone/pc/internet         2.140,61   <- was netted to 0 before
+  //   618020 social contributions borne 3.593,12   <- was not mapped at all
+  //                                    ----------
+  //                                    31.046,33   = fiche code 400 exactly
+  //
+  // A genuine eigen bijdrage (the director actually paying for the benefit)
+  // does reduce the taxable amount, but it is booked against the director's
+  // R/C, not to a recovery account, so it never lands here.
   const benefits = BENEFIT_KEYS.reduce(
-    (s, k) => s + debitOf(k) - creditOf(`${k}_recovery`),
+    (s, k) => s + debitOf(k) - creditOf(k),
     0,
   );
   push("benefitsInKind", benefits, "ledger", BENEFIT_KEYS);

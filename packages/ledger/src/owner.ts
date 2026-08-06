@@ -82,6 +82,12 @@ export const DIRECTOR_ACCOUNT_KEYS: Array<{
     group: "benefit_recovery",
   },
   {
+    systemKey: "vaa_social_contributions",
+    code: "618020",
+    label: "Social contributions borne by the company",
+    group: "benefit",
+  },
+  {
     systemKey: "social_contributions_paid",
     code: "618021",
     label: "Social contributions paid",

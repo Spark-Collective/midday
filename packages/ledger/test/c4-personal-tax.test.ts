@@ -116,7 +116,7 @@ describe("personal tax pack — assembly (C4)", () => {
     expect(pack.assessmentYear).toBe(2026); // aanslagjaar = income year + 1
   });
 
-  test("remuneration and benefits land in vak XVI, benefits net of recovery", async () => {
+  test("remuneration and benefits land in vak XVI, benefits reported GROSS", async () => {
     const pack = await buildPersonalTaxPack(db, {
       teamId,
       directorId,
@@ -126,8 +126,11 @@ describe("personal tax pack — assembly (C4)", () => {
     const vaa = pack.lines.find((l) => l.boxKey === "benefitsInKind");
     expect(rem?.amount).toBe(24000);
     expect(rem?.vak).toBe("XVI");
-    expect(vaa?.amount).toBe(1200); // 1.800 - 600 recovered
-    expect(pack.totals.grossProfessionalIncome).toBe(25200);
+    // Taxable GROSS: the 600 booked to a 746xxx recovery is the company's
+    // contra so the payroll journal balances, not a payment by the director.
+    // Spark's real 2024 fiche 281.20 proves it (see the fiche test below).
+    expect(vaa?.amount).toBe(1800);
+    expect(pack.totals.grossProfessionalIncome).toBe(25800);
   });
 
   test("withholding is read from the credit side of 453000", async () => {
@@ -235,7 +238,7 @@ describe("cross-check against the official fiche (C4)", () => {
     expect(
       comparePackToOfficial(pack, {
         grossRemuneration: 24000,
-        benefitsInKind: 1200,
+        benefitsInKind: 1800,
         withholding: 6000,
       }),
     ).toEqual([]);
