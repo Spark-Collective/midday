@@ -54,9 +54,9 @@ const NEXT: Record<Status, Status[]> = {
 };
 
 const FILTERS = [
+  { key: "all", label: "All" },
   { key: "open", label: "Open" },
   { key: "accepted", label: "Accepted" },
-  { key: "all", label: "All" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["key"];
 
@@ -64,7 +64,7 @@ export function ProposalsContent() {
   const trpc = useTRPC();
   const { data: user } = useUserQuery();
   const { data, isLoading } = useQuery(trpc.proposals.list.queryOptions({}));
-  const [filter, setFilter] = useState<Filter>("open");
+  const [filter, setFilter] = useState<Filter>("all");
 
   const all = (data ?? []) as Proposal[];
   const rows = all.filter((p) =>
