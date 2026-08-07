@@ -41,6 +41,7 @@ import {
   exchangeRates,
   inbox,
   invoices,
+  proposals,
   reports,
   teams,
   transactionCategories,
@@ -2653,6 +2654,13 @@ interface ForecastBreakdown {
   recurringInvoices: number;
   recurringTransactions: number;
   scheduled: number;
+  /**
+   * Accepted proposals not yet invoiced. Signed work, so it is COMMITTED and
+   * never gets the newBusiness decay: the amount is contractual and only the
+   * invoice date is our estimate. NET of VAT, because this is a revenue
+   * forecast; the cash forecast grosses the same rows up instead.
+   */
+  proposals: number;
   collections: number;
   billableHours: number;
   newBusiness: number;
@@ -2674,6 +2682,7 @@ function calculateConfidenceBounds(
     breakdown.recurringInvoices * 1.05 +
     breakdown.recurringTransactions * 1.1 +
     breakdown.scheduled * 1.05 +
+    breakdown.proposals * 1.05 +
     breakdown.collections * 1.2 +
     breakdown.billableHours * 1.15 +
     breakdown.newBusiness * 1.5;
@@ -2682,6 +2691,7 @@ function calculateConfidenceBounds(
     breakdown.recurringInvoices * 0.95 +
     breakdown.recurringTransactions * 0.85 + // More conservative (85% not 90%)
     breakdown.scheduled * 0.9 +
+    breakdown.proposals * 0.85 +
     breakdown.collections * 0.6 +
     breakdown.billableHours * 0.7 +
     breakdown.newBusiness * 0.4;
@@ -2693,6 +2703,7 @@ function calculateConfidenceBounds(
       ? (breakdown.recurringInvoices / total) * 95 +
         (breakdown.recurringTransactions / total) * 85 +
         (breakdown.scheduled / total) * 90 +
+        (breakdown.proposals / total) * 85 +
         (breakdown.collections / total) * 70 +
         (breakdown.billableHours / total) * 75 +
         (breakdown.newBusiness / total) * 35
@@ -2811,12 +2822,27 @@ export async function getRevenueForecast(
     )
   END`;
 
+  // Proposals are quoted NET and stay net here: this is a REVENUE forecast, and
+  // revenue excludes VAT. The cash forecast grosses the same rows up because
+  // that is what actually lands in the bank.
+  const resolvedProposalOneOff = sql`CASE
+    WHEN ${proposals.currency} = ${effectiveCurrency} THEN ${proposals.oneOffAmount}
+    ELSE ${proposals.oneOffAmount} * (
+      SELECT ${exchangeRates.rate} FROM ${exchangeRates}
+      WHERE ${exchangeRates.base} = ${proposals.currency}
+        AND ${exchangeRates.target} = ${effectiveCurrency}
+      ORDER BY ${exchangeRates.updatedAt} DESC NULLS LAST
+      LIMIT 1
+    )
+  END`;
+
   // Fetch ALL data sources in parallel for the bottom-up forecast
   const [
     historicalData,
     outstandingInvoicesData,
     billableHoursData,
     scheduledInvoicesData,
+    acceptedProposalsData,
     recurringInvoiceData,
     recurringTransactionData,
     teamCollectionMetrics,
@@ -2853,6 +2879,24 @@ export async function getRevenueForecast(
           lte(invoices.issueDate, forecastEndDate),
         ),
       ),
+    // Accepted proposals with an expected invoice date inside the window. Only
+    // `accepted` counts: everything earlier is pipeline, not revenue.
+    db
+      .select({
+        amount: resolvedProposalOneOff,
+        expectedInvoiceDate: proposals.expectedInvoiceDate,
+      })
+      .from(proposals)
+      .where(
+        and(
+          eq(proposals.teamId, teamId),
+          eq(proposals.status, "accepted"),
+          isNotNull(proposals.oneOffAmount),
+          isNotNull(proposals.expectedInvoiceDate),
+          gte(proposals.expectedInvoiceDate, forecastStartDate),
+          lte(proposals.expectedInvoiceDate, forecastEndDate),
+        ),
+      ),
     getRecurringInvoiceProjection(db, {
       teamId,
       forecastMonths,
@@ -2876,6 +2920,21 @@ export async function getRevenueForecast(
   }));
 
   const currency = historical[0]?.currency || inputCurrency || "USD";
+
+  // Group accepted proposals by the month they are expected to be INVOICED.
+  // Revenue is recognised when you bill, not when the client pays.
+  const proposalsByMonth = new Map<string, number>();
+  for (const row of acceptedProposalsData) {
+    if (!row.expectedInvoiceDate) continue;
+    const monthKey = format(
+      endOfMonth(new UTCDate(parseISO(row.expectedInvoiceDate))),
+      "yyyy-MM-dd",
+    );
+    proposalsByMonth.set(
+      monthKey,
+      (proposalsByMonth.get(monthKey) || 0) + Number(row.amount ?? 0),
+    );
+  }
 
   // Group scheduled invoices by month
   const scheduledByMonth = new Map<string, number>();
@@ -2962,6 +3021,7 @@ export async function getRevenueForecast(
       recurringInvoices,
       recurringTransactions,
       scheduled,
+      proposals: proposalsByMonth.get(monthKey) || 0,
       collections,
       billableHours,
       newBusiness,
