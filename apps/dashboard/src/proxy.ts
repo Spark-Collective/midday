@@ -35,6 +35,9 @@ export async function proxy(request: NextRequest) {
     newUrl.pathname !== "/login" &&
     !newUrl.pathname.includes("/i/") &&
     !newUrl.pathname.includes("/p/") &&
+    // Client-facing proposal pages, keyed by an unguessable share token. Without
+    // this the page redirects to login and the client sees a sign-in screen.
+    !newUrl.pathname.includes("/pr/") &&
     !newUrl.pathname.includes("/s/") &&
     !newUrl.pathname.includes("/r/") &&
     !newUrl.pathname.includes("/verify") &&
