@@ -2926,10 +2926,10 @@ export async function getRevenueForecast(
   const proposalsByMonth = new Map<string, number>();
   for (const row of acceptedProposalsData) {
     if (!row.expectedInvoiceDate) continue;
-    const monthKey = format(
-      endOfMonth(new UTCDate(parseISO(row.expectedInvoiceDate))),
-      "yyyy-MM-dd",
-    );
+    // "yyyy-MM", matching the key the forecast loop looks up with. An
+    // end-of-month "yyyy-MM-dd" key silently never matches and the whole input
+    // reads as zero.
+    const monthKey = format(parseISO(row.expectedInvoiceDate), "yyyy-MM");
     proposalsByMonth.set(
       monthKey,
       (proposalsByMonth.get(monthKey) || 0) + Number(row.amount ?? 0),
