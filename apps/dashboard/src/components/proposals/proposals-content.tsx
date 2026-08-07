@@ -2,6 +2,7 @@
 
 import { Button } from "@midday/ui/button";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import { useUserQuery } from "@/hooks/use-user";
 import { useTRPC } from "@/trpc/client";
@@ -17,6 +18,7 @@ type Status =
 
 type Proposal = {
   id: string;
+  token: string;
   number: string;
   title: string;
   status: Status;
@@ -179,7 +181,11 @@ function Row({
   return (
     <div className="border-b border-border px-4 py-3 last:border-b-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
+        <Link
+          href={`/pr/${proposal.token}`}
+          target="_blank"
+          className="min-w-0 hover:underline"
+        >
           <span className="font-mono text-xs text-[#878787]">
             {proposal.number}
           </span>
@@ -187,7 +193,7 @@ function Row({
           <span className={`ml-2 text-xs ${TONE[proposal.status]}`}>
             {proposal.status}
           </span>
-        </div>
+        </Link>
         <div className="flex shrink-0 items-center gap-3">
           {proposal.customerName && (
             <span className="text-xs text-[#878787]">

@@ -269,6 +269,8 @@ export async function setProposalStatus(
 
 export type ProposalRow = {
   id: string;
+  /** Share token: the key to the public proposal page. */
+  token: string;
   number: string;
   title: string;
   status: ProposalStatus;
@@ -301,7 +303,7 @@ export async function listProposals(
   },
 ): Promise<ProposalRow[]> {
   const r = await client.query(
-    `SELECT p.id, p.number, p.title, p.status, p.customer_id, c.name AS customer_name,
+    `SELECT p.id, p.token, p.number, p.title, p.status, p.customer_id, c.name AS customer_name,
             p.project_id, p.currency,
             p.one_off_amount::float8 AS one_off_amount,
             p.recurring_amount::float8 AS recurring_amount,
@@ -326,6 +328,7 @@ export async function listProposals(
 
   return r.rows.map((x) => ({
     id: x.id,
+    token: x.token,
     number: x.number,
     title: x.title,
     status: asStatus(x.status),
@@ -388,7 +391,7 @@ export async function listPortalProposals(
   input: { portalId: string },
 ): Promise<ProposalRow[]> {
   const r = await client.query(
-    `SELECT p.id, p.number, p.title, p.status, p.customer_id, c.name AS customer_name,
+    `SELECT p.id, p.token, p.number, p.title, p.status, p.customer_id, c.name AS customer_name,
             p.project_id, p.currency,
             p.one_off_amount::float8 AS one_off_amount,
             p.recurring_amount::float8 AS recurring_amount,
@@ -408,6 +411,7 @@ export async function listPortalProposals(
   );
   return r.rows.map((x) => ({
     id: x.id,
+    token: x.token,
     number: x.number,
     title: x.title,
     status: asStatus(x.status),
@@ -429,4 +433,76 @@ export async function listPortalProposals(
     bodyMd: x.body_md,
     sla: x.sla,
   }));
+}
+
+/**
+ * One proposal by its share token: the client-facing page.
+ *
+ * Same ALLOWLIST as the portal list. A token is unguessable, but "unguessable"
+ * is not "authorised to see a draft": an offer the client has not been sent must
+ * not be readable just because someone has the link, and a withdrawn one must
+ * stop being readable the moment it is superseded.
+ *
+ * Also bumps the view counters the funnel already maintained, so "has the client
+ * opened it" keeps working now that Midday serves the page too.
+ */
+export async function getProposalByToken(
+  client: PoolClient,
+  input: { token: string; countView?: boolean },
+): Promise<ProposalRow | null> {
+  const r = await client.query(
+    `SELECT p.id, p.token, p.number, p.title, p.status, p.customer_id,
+            COALESCE(c.name, p.client_name) AS customer_name,
+            p.project_id, p.currency,
+            p.one_off_amount::float8 AS one_off_amount,
+            p.recurring_amount::float8 AS recurring_amount,
+            p.recurring_interval, p.recurring_months,
+            p.expires_at::text AS valid_until,
+            p.vat_rate::float8 AS vat_rate,
+            p.expected_invoice_date::text AS expected_invoice_date,
+            p.document_url, p.sent_at, p.decided_at, p.body_md, p.sla,
+            0::float8 AS invoiced
+       FROM proposals p
+       LEFT JOIN customers c ON c.id = p.customer_id
+      WHERE p.token = $1 AND p.status = ANY($2::text[])`,
+    [input.token, CLIENT_VISIBLE],
+  );
+  const x = r.rows[0];
+  if (!x) return null;
+
+  if (input.countView) {
+    await client.query(
+      `UPDATE proposals
+          SET view_count = view_count + 1,
+              first_viewed_at = COALESCE(first_viewed_at, now()),
+              last_viewed_at = now()
+        WHERE id = $1`,
+      [x.id],
+    );
+  }
+
+  return {
+    id: x.id,
+    token: x.token,
+    number: x.number,
+    title: x.title,
+    status: asStatus(x.status),
+    customerId: x.customer_id,
+    customerName: x.customer_name,
+    projectId: x.project_id,
+    currency: x.currency,
+    oneOffAmount: x.one_off_amount,
+    recurringAmount: x.recurring_amount,
+    recurringInterval: x.recurring_interval,
+    recurringMonths: x.recurring_months,
+    validUntil: x.valid_until,
+    expectedInvoiceDate: x.expected_invoice_date,
+    documentUrl: x.document_url,
+    vatRate: x.vat_rate,
+    sentAt: x.sent_at,
+    decidedAt: x.decided_at,
+    invoiced: x.invoiced,
+    bodyMd: x.body_md,
+    sla: x.sla,
+  };
 }

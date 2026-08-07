@@ -6,6 +6,7 @@ import {
 import { primaryDb } from "@midday/db/client";
 import {
   expireLapsedProposals,
+  getProposalByToken,
   listPortalProposals,
   listProposals,
   setProposalStatus,
@@ -116,6 +117,23 @@ export const proposalsRouter = createTRPCRouter({
     .input(z.object({ portalId: z.string().min(1) }))
     .query(async ({ input }) =>
       withClient((c) => listPortalProposals(c, { portalId: input.portalId })),
+    ),
+
+  /** PUBLIC: one proposal by its share token, for the client-facing page. */
+  byToken: publicProcedure
+    .input(
+      z.object({
+        token: z.string().min(1),
+        countView: z.boolean().optional(),
+      }),
+    )
+    .query(async ({ input }) =>
+      withClient((c) =>
+        getProposalByToken(c, {
+          token: input.token,
+          countView: input.countView,
+        }),
+      ),
     ),
 
   expireLapsed: protectedProcedure.mutation(async ({ ctx: { teamId } }) =>

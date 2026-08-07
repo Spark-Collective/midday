@@ -14,7 +14,11 @@ import {
   test,
 } from "bun:test";
 import { Pool, type PoolClient } from "pg";
-import { listPortalProposals, upsertProposal } from "../src/proposals.js";
+import {
+  getProposalByToken,
+  listPortalProposals,
+  upsertProposal,
+} from "../src/proposals.js";
 import { initTestDb, TEST_DB_URL } from "./helpers/setup.js";
 
 const pool = new Pool({ connectionString: TEST_DB_URL });
@@ -122,6 +126,38 @@ describe("customer portal visibility", () => {
       "UPDATE customers SET portal_enabled = false WHERE id = $1",
       [closedCustomer],
     );
+  });
+
+  test("a token opens the proposal, and counts the view", async () => {
+    const id = await proposal(openCustomer, "By link", "sent");
+    const token = (
+      await db.query("SELECT token FROM proposals WHERE id = $1", [id])
+    ).rows[0].token as string;
+
+    const first = await getProposalByToken(db, { token, countView: true });
+    expect(first?.title).toBe("By link");
+    expect(first?.bodyMd).toContain("The offer.");
+
+    const counted = await db.query(
+      "SELECT view_count, first_viewed_at IS NOT NULL AS seen FROM proposals WHERE id = $1",
+      [id],
+    );
+    expect(counted.rows[0].view_count).toBe(1);
+    expect(counted.rows[0].seen).toBe(true);
+  });
+
+  test("a token does NOT open a draft or a withdrawn offer", async () => {
+    for (const status of ["draft", "withdrawn"]) {
+      const id = await proposal(openCustomer, `Hidden ${status}`, status);
+      const token = (
+        await db.query("SELECT token FROM proposals WHERE id = $1", [id])
+      ).rows[0].token as string;
+      expect(await getProposalByToken(db, { token })).toBeNull();
+    }
+  });
+
+  test("an unknown token returns null rather than erroring", async () => {
+    expect(await getProposalByToken(db, { token: "nope" })).toBeNull();
   });
 
   test("an unknown portal id returns nothing rather than erroring", async () => {
