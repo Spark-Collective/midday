@@ -128,7 +128,18 @@ export const registerProposalTools: RegisterTools = (server, ctx) => {
             .string()
             .optional()
             .describe(
-              "The document in markdown, including the SLA section. CLIENT-VISIBLE: this is rendered on the customer portal, so it must contain nothing internal.",
+              "Short markdown fallback, used only when `content` is absent. CLIENT-VISIBLE: rendered on the client's proposal page, so nothing internal belongs in it.",
+            ),
+          content: z
+            .array(z.any())
+            .optional()
+            .describe(
+              "THE PREFERRED WAY to write a proposal: the full client-facing document as an array of blocks, the same format the Spark website proposals use, so it reads like the ones already sent. Blocks: " +
+                '{kind:"prose", heading, body} where body is markdown (**bold**, *italic*, [label](href), "- " bullets, "1. " numbers); ' +
+                '{kind:"table", heading, table:{head:[..], rows:[[..]]}} for comparisons and pricing, cells take markdown; ' +
+                '{kind:"links", heading, body, links:[{href,label,note}]} for live demos; ' +
+                '{kind:"image", image:{src,alt,caption}} where src MUST be an absolute https URL or only the caption renders. ' +
+                "Write the whole offer: what it is, why it fits, what it costs, honest caveats, next steps. CLIENT-VISIBLE.",
             ),
           sla: z
             .record(z.string(), z.any())

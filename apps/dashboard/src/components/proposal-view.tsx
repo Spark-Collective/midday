@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
+import { type ProposalBlock, ProposalBlocks } from "./proposal-blocks";
 import { ProposalMarkdown } from "./proposal-markdown";
 
 type Proposal = {
@@ -21,6 +22,7 @@ type Proposal = {
   sentAt: string | null;
   decidedAt: string | null;
   bodyMd?: string | null;
+  content?: unknown[] | null;
   sla?: Record<string, unknown> | null;
 };
 
@@ -72,6 +74,7 @@ export function ProposalView({ token }: { token: string }) {
   const net = p.oneOffAmount ?? 0;
   const vat = net * (p.vatRate / 100);
   const sla = (p.sla ?? {}) as Record<string, unknown>;
+  const blocks = (Array.isArray(p.content) ? p.content : []) as ProposalBlock[];
   const slaEntries = Object.entries(sla).filter(
     ([, v]) => v !== null && v !== undefined && v !== "",
   );
@@ -149,7 +152,11 @@ export function ProposalView({ token }: { token: string }) {
         </div>
       )}
 
-      {p.bodyMd ? (
+      {/* The rich block document wins: it is the one written for the client.
+          bodyMd is the short fallback for records that never had one. */}
+      {blocks.length > 0 ? (
+        <ProposalBlocks blocks={blocks} />
+      ) : p.bodyMd ? (
         <ProposalMarkdown source={p.bodyMd} />
       ) : (
         <p className="text-[13px] text-[#606060]">

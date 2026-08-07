@@ -39,6 +39,12 @@ export type ProposalInput = {
   validUntil?: string | null;
   expectedInvoiceDate?: string | null;
   bodyMd?: string | null;
+  /**
+   * The rich document, in the same block format the Spark website proposals use
+   * (prose | table | links | image). Preferred over bodyMd when present: it is
+   * what makes a proposal read like the ones actually sent to clients.
+   */
+  content?: unknown[] | null;
   sla?: Record<string, unknown> | null;
   documentUrl?: string | null;
   /** Percent. 21 = Belgian standard; 0 for reverse charge or non-EU. */
@@ -143,7 +149,8 @@ export async function upsertProposal(
          recurring_months = $8, expires_at = $9, expected_invoice_date = $10,
          body_md = COALESCE($11, body_md), sla = COALESCE($12::jsonb, sla),
          document_url = COALESCE($13, document_url),
-         vat_rate = COALESCE($16, vat_rate), updated_at = now()
+         vat_rate = COALESCE($16, vat_rate),
+         content = COALESCE($17::jsonb, content), updated_at = now()
        WHERE id = $14 AND team_id = $15
        RETURNING id, number`,
       [
@@ -163,6 +170,7 @@ export async function upsertProposal(
         input.id,
         input.teamId,
         input.vatRate ?? null,
+        input.content ? JSON.stringify(input.content) : null,
       ],
     );
     return r.rows[0];
@@ -177,10 +185,10 @@ export async function upsertProposal(
        (team_id, customer_id, project_id, number, title, currency,
         one_off_amount, recurring_amount, recurring_interval, recurring_months,
         expires_at, expected_invoice_date, body_md, sla, document_url,
-        client_name, vat_rate)
+        client_name, vat_rate, content)
      VALUES ($1,$2,$3,$4,$5,COALESCE($6,'EUR'),$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,
              COALESCE((SELECT name FROM customers WHERE id = $2), $5),
-             COALESCE($16, 21))
+             COALESCE($16, 21), COALESCE($17::jsonb, '[]'::jsonb))
      RETURNING id, number, token`,
     [
       input.teamId,
@@ -199,6 +207,7 @@ export async function upsertProposal(
       input.sla ? JSON.stringify(input.sla) : null,
       input.documentUrl ?? null,
       input.vatRate ?? null,
+      input.content ? JSON.stringify(input.content) : null,
     ],
   );
   return r.rows[0];
@@ -290,6 +299,7 @@ export type ProposalRow = {
   decidedAt: string | null;
   invoiced: number;
   bodyMd?: string | null;
+  content?: unknown[] | null;
   sla?: Record<string, unknown> | null;
 };
 
@@ -461,6 +471,7 @@ export async function getProposalByToken(
             p.vat_rate::float8 AS vat_rate,
             p.expected_invoice_date::text AS expected_invoice_date,
             p.document_url, p.sent_at, p.decided_at, p.body_md, p.sla,
+            p.content,
             0::float8 AS invoiced
        FROM proposals p
        LEFT JOIN customers c ON c.id = p.customer_id
@@ -503,6 +514,7 @@ export async function getProposalByToken(
     decidedAt: x.decided_at,
     invoiced: x.invoiced,
     bodyMd: x.body_md,
+    content: x.content,
     sla: x.sla,
   };
 }

@@ -85,6 +85,7 @@ export const proposalsRouter = createTRPCRouter({
         validUntil: z.string().date().nullable().optional(),
         expectedInvoiceDate: z.string().date().nullable().optional(),
         bodyMd: z.string().nullable().optional(),
+        content: z.array(z.unknown()).nullable().optional(),
         sla: z.record(z.string(), z.unknown()).nullable().optional(),
         documentUrl: z.string().url().nullable().optional(),
         vatRate: z.number().min(0).max(100).nullable().optional(),
