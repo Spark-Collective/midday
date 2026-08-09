@@ -2,8 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "@/trpc/client";
-import { type ProposalBlock, ProposalBlocks } from "./proposal-blocks";
-import { ProposalMarkdown } from "./proposal-markdown";
+import {
+  formatMoney as money,
+  type ProposalBlock,
+  ProposalBlocks,
+  STATUS_LABEL,
+} from "./proposal-blocks";
 
 type Proposal = {
   id: string;
@@ -25,20 +29,6 @@ type Proposal = {
   content?: unknown[] | null;
   sla?: Record<string, unknown> | null;
 };
-
-const STATUS_LABEL: Record<string, string> = {
-  sent: "Awaiting your decision",
-  accepted: "Accepted",
-  declined: "Declined",
-  expired: "Expired",
-};
-
-const money = (n: number, currency: string) =>
-  new Intl.NumberFormat("nl-BE", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(n);
 
 /** camelCase SLA keys read as prose: noticePeriodDays -> "Notice period days". */
 function humanise(key: string) {
@@ -152,12 +142,13 @@ export function ProposalView({ token }: { token: string }) {
         </div>
       )}
 
-      {/* The rich block document wins: it is the one written for the client.
-          bodyMd is the short fallback for records that never had one. */}
-      {blocks.length > 0 ? (
-        <ProposalBlocks blocks={blocks} />
-      ) : p.bodyMd ? (
-        <ProposalMarkdown source={p.bodyMd} />
+      {/* The rich block document wins; a bare bodyMd is just one prose block. */}
+      {blocks.length > 0 || p.bodyMd ? (
+        <ProposalBlocks
+          blocks={
+            blocks.length > 0 ? blocks : [{ kind: "prose", body: p.bodyMd! }]
+          }
+        />
       ) : (
         <p className="text-[13px] text-[#606060]">
           The full document was sent separately.

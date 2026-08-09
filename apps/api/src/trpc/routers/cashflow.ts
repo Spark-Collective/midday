@@ -5,7 +5,6 @@ import {
   copyBudgetForward,
   getBudgetVsActual,
   setBudget,
-  snapshotCashForecast,
 } from "@midday/ledger";
 import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
@@ -73,25 +72,4 @@ export const cashflowRouter = createTRPCRouter({
     .mutation(async ({ ctx: { teamId }, input }) =>
       withClient((c) => copyBudgetForward(c, { teamId: teamId!, ...input })),
     ),
-
-  snapshot: protectedProcedure.mutation(async ({ ctx: { teamId } }) =>
-    withClient((c) => snapshotCashForecast(c, { teamId: teamId! })),
-  ),
-
-  /**
-   * What past forecasts claimed, so the payment-lag model can be scored against
-   * what actually happened rather than trusted indefinitely.
-   */
-  snapshots: protectedProcedure.query(async ({ ctx: { teamId } }) => {
-    const r = await pool().query(
-      `SELECT taken_on::text AS taken_on, opening_balance::float8 AS opening_balance,
-              currency, buckets
-         FROM cash_forecast_snapshots
-        WHERE team_id = $1
-        ORDER BY taken_on DESC
-        LIMIT 24`,
-      [teamId],
-    );
-    return r.rows;
-  }),
 });

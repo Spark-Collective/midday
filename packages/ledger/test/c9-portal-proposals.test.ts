@@ -97,7 +97,9 @@ describe("customer portal visibility", () => {
       "Sent offer",
       "Won offer",
     ]);
-    expect(rows[0]?.bodyMd).toContain("The offer.");
+    // The list is deliberately light: the document ships on the /pr/[token]
+    // page (getProposalByToken), not with every row.
+    expect(rows[0]?.bodyMd).toBeUndefined();
   });
 
   test("'viewed' from the funnel is visible and reads as sent", async () => {

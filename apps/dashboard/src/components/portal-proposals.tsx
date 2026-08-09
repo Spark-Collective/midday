@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTRPC } from "@/trpc/client";
+import { formatMoney as money, STATUS_LABEL } from "./proposal-blocks";
 
 type Proposal = {
   id: string;
@@ -17,23 +18,7 @@ type Proposal = {
   recurringMonths: number | null;
   validUntil: string | null;
   vatRate: number;
-  bodyMd?: string | null;
 };
-
-const STATUS_LABEL: Record<string, string> = {
-  sent: "Awaiting your decision",
-  accepted: "Accepted",
-  declined: "Declined",
-  expired: "Expired",
-};
-
-function money(n: number, currency: string) {
-  return new Intl.NumberFormat("nl-BE", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
 
 export function PortalProposals({ portalId }: { portalId: string }) {
   const trpc = useTRPC();

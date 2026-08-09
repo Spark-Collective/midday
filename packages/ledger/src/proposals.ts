@@ -409,7 +409,7 @@ export async function listPortalProposals(
             p.expires_at::text AS valid_until,
             p.vat_rate::float8 AS vat_rate,
             p.expected_invoice_date::text AS expected_invoice_date,
-            p.document_url, p.sent_at, p.decided_at, p.body_md, p.sla,
+            p.document_url, p.sent_at, p.decided_at,
             0::float8 AS invoiced
        FROM proposals p
        JOIN customers c ON c.id = p.customer_id
@@ -440,8 +440,6 @@ export async function listPortalProposals(
     sentAt: x.sent_at,
     decidedAt: x.decided_at,
     invoiced: x.invoiced,
-    bodyMd: x.body_md,
-    sla: x.sla,
   }));
 }
 

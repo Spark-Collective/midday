@@ -5,7 +5,6 @@ import {
 } from "@api/trpc/init";
 import { primaryDb } from "@midday/db/client";
 import {
-  expireLapsedProposals,
   getProposalByToken,
   listPortalProposals,
   listProposals,
@@ -53,18 +52,6 @@ export const proposalsRouter = createTRPCRouter({
           status: input?.status,
         }),
       ),
-    ),
-
-  get: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ ctx: { teamId }, input }) =>
-      withClient(async (c) => {
-        const rows = await listProposals(c, {
-          teamId: teamId!,
-          includeBody: true,
-        });
-        return rows.find((r) => r.id === input.id) ?? null;
-      }),
     ),
 
   upsert: protectedProcedure
@@ -136,8 +123,4 @@ export const proposalsRouter = createTRPCRouter({
         }),
       ),
     ),
-
-  expireLapsed: protectedProcedure.mutation(async ({ ctx: { teamId } }) =>
-    withClient((c) => expireLapsedProposals(c, { teamId: teamId! })),
-  ),
 });

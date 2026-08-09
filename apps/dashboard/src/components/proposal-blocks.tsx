@@ -30,6 +30,22 @@ export type ProposalBlock =
       image?: { src?: string; alt?: string; caption?: string };
     };
 
+/** What a client reads next to an offer's status, shared by every surface. */
+export const STATUS_LABEL: Record<string, string> = {
+  sent: "Awaiting your decision",
+  accepted: "Accepted",
+  declined: "Declined",
+  expired: "Expired",
+};
+
+/** Client-facing money: always nl-BE, always the currency symbol. */
+export const formatMoney = (n: number, currency: string) =>
+  new Intl.NumberFormat("nl-BE", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(n);
+
 /** **bold**, *italic* and [label](href), which is all these documents use. */
 export function inline(text: string, keyBase: string): ReactNode[] {
   const parts = text.split(/(\*\*[^*]+\*\*|\*[^*\n]+\*|\[[^\]]+\]\([^)]+\))/g);
