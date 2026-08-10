@@ -2791,8 +2791,19 @@ export async function getRevenueForecast(
   const targetCurrency = await getTargetCurrency(db, teamId, inputCurrency);
   const effectiveCurrency = targetCurrency || "USD";
 
+  // The actual/forecast boundary is TODAY, never the end of the requested
+  // range. Ask for a range that runs into the future and the old code treated
+  // months that have not happened yet as "actual" — months with no revenue in
+  // them — then started forecasting only after that. The chart read as a cliff
+  // followed by a recovery, and a forecast the owner distrusts is dead.
+  //
+  // Identical behaviour for any range ending today or earlier, which is the
+  // normal case.
+  const todayIso = format(new UTCDate(), "yyyy-MM-dd");
+  const historicalTo = to < todayIso ? to : todayIso;
+
   // Calculate forecast date range
-  const currentDate = new UTCDate(parseISO(to));
+  const currentDate = new UTCDate(parseISO(historicalTo));
   const forecastStartDate = format(
     endOfMonth(
       new UTCDate(currentDate.getFullYear(), currentDate.getMonth() + 1, 1),
@@ -2850,7 +2861,8 @@ export async function getRevenueForecast(
     getRevenue(db, {
       teamId,
       from,
-      to,
+      // Clipped at today: future months are the forecast's job, not history's.
+      to: historicalTo,
       currency: inputCurrency,
       revenueType,
     }),
