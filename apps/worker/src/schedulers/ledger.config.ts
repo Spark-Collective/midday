@@ -39,6 +39,18 @@ export const ledgerStaticSchedulers: StaticSchedulerConfig[] = [
     },
   },
   {
+    name: "proposals-expire-scheduler",
+    queue: "accounting",
+    // Nightly 03:15 UTC, just before the filings sweep. Idempotent, so a
+    // missed night heals itself instead of needing a catch-up run.
+    cron: "15 3 * * *",
+    jobName: "proposals-expire",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
+  {
     name: "filings-generate-scheduler",
     queue: "accounting",
     cron: "30 3 * * *", // nightly 03:30 UTC; idempotent, so a missed run self-heals
