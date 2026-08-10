@@ -54,6 +54,11 @@ const M40 = readFileSync(
   "utf8",
 );
 
+const M41 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0041_asset_acquisition_value.sql"),
+  "utf8",
+);
+
 const M48 = readFileSync(
   join(
     import.meta.dir,
@@ -183,6 +188,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M16);
   await db.query(M39);
   await db.query(M40);
+  await db.query(M41);
   await db.query(M43);
   await db.query(M44);
   await db.query(M45);

@@ -148,6 +148,67 @@ describe("asset register (M11)", () => {
     expect(Math.round(scheduled * 100) / 100).toBe(900);
   });
 
+  test("gross and accumulated stay silent until every asset has its history", async () => {
+    const r = await getAssetRegister(db, { teamId, asOf: "2026-03-31" });
+    // Nothing backfilled yet: claiming a gross figure would be claiming a
+    // number we do not have.
+    expect(r.reconciliation.gross).toBeNull();
+    expect(r.reconciliation.accumulated).toBeNull();
+    expect(r.assets[0]!.acquisitionValue).toBeNull();
+  });
+
+  test("once backfilled, gross and accumulated reconcile too", async () => {
+    // The asset cost 1.500 and had 300 depreciated before the register began,
+    // so the opening basis of 1.200 is what the schedule runs on. Book that
+    // prior history into the ledger the way a history import would.
+    await postEntry(db, {
+      teamId,
+      journalCode: "890",
+      date: "2026-01-01",
+      narration: "prior cost and depreciation",
+      lines: [
+        { accountCode: "232000", debit: 300 },
+        { accountCode: "232009", credit: 300 },
+      ],
+    });
+    await db.query(
+      `UPDATE amortizations
+          SET acquisition_value = 1500, accumulated_at_start = 300
+        WHERE team_id = $1`,
+      [teamId],
+    );
+
+    const r = await getAssetRegister(db, { teamId, asOf: "2026-03-31" });
+    const a = r.assets[0]!;
+    expect(a.acquisitionValue).toBe(1500);
+    expect(a.accumulatedAtStart).toBe(300);
+    // 300 before the register + 300 posted since
+    expect(a.accumulatedTotal).toBe(600);
+    expect(a.basis).toBe(1200);
+
+    const rec = r.reconciliation;
+    expect(rec.gross).not.toBeNull();
+    expect(rec.gross!.register).toBe(1500);
+    expect(rec.gross!.ledger).toBe(1500);
+    expect(rec.gross!.ok).toBe(true);
+    expect(rec.accumulated!.register).toBe(600);
+    expect(rec.accumulated!.ledger).toBe(600);
+    expect(rec.accumulated!.ok).toBe(true);
+    // and NBV still holds: 1500 - 600 = 900
+    expect(rec.registerNbv).toBe(900);
+    expect(rec.ok).toBe(true);
+  });
+
+  test("the DB refuses an acquisition history that does not add up", async () => {
+    expect(
+      db.query(
+        `UPDATE amortizations SET acquisition_value = 9999, accumulated_at_start = 300
+          WHERE team_id = $1`,
+        [teamId],
+      ),
+    ).rejects.toThrow(/acquisition_identity/);
+  });
+
   test("a depreciation posted OUTSIDE the register turns the check red", async () => {
     await postEntry(db, {
       teamId,

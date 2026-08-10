@@ -4631,6 +4631,17 @@ export const amortizations = pgTable(
     startDate: date("start_date").notNull(),
     months: integer().notNull(),
     amount: numericCasted({ precision: 10, scale: 2 }).notNull(),
+    // Migration 0041: what was actually paid, and what had already been
+    // depreciated when this schedule began. Nullable; `amount` stays the basis
+    // the engine runs on. acquisition_value - accumulated_at_start = amount.
+    acquisitionValue: numericCasted("acquisition_value", {
+      precision: 12,
+      scale: 2,
+    }),
+    accumulatedAtStart: numericCasted("accumulated_at_start", {
+      precision: 12,
+      scale: 2,
+    }),
     residualValue: numericCasted("residual_value", { precision: 10, scale: 2 })
       .default(0)
       .notNull(),

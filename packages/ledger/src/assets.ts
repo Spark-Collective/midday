@@ -11,11 +11,12 @@
  *    asset with 7 months behind it has 7 rows, not 44. The forward schedule is
  *    therefore COMPUTED from amount/months/residual, never read.
  * 2. `amortizations.amount` is the basis the schedule runs on, which for assets
- *    seeded at the 2026 history import is their NET BOOK VALUE at that date,
- *    not their original cost. So it is reported as "basis" and reconciliation
- *    compares NET BOOK VALUE, never gross. A gross comparison would show a
- *    permanent difference that is not an error, and a check people learn to
- *    ignore is worse than no check.
+ *    seeded at a history import is their NET BOOK VALUE at that date, not
+ *    their original cost. Net book value is therefore the reconciliation that
+ *    ALWAYS holds. Migration 0041 added acquisition_value and
+ *    accumulated_at_start, so gross and accumulated are reconciled too, but
+ *    only when every asset carries them: a partial sum would read as a real
+ *    difference, and a check people learn to ignore is worse than no check.
  */
 import type { LedgerDb } from "./post.js";
 
@@ -32,6 +33,12 @@ export type AssetRow = {
   accumulatedCode: string | null;
   /** What the schedule depreciates (see the header note on its meaning). */
   basis: number;
+  /** What was actually paid, incl. non-deductible VAT. Null when unknown. */
+  acquisitionValue: number | null;
+  /** Depreciation booked before this schedule began. Null when unknown. */
+  accumulatedAtStart: number | null;
+  /** Life-to-date depreciation: before the register plus posted since. */
+  accumulatedTotal: number | null;
   residual: number;
   depreciated: number;
   netBookValue: number;
@@ -51,7 +58,7 @@ export type AssetRegister = {
     netBookValue: number;
     monthlyCharge: number;
   };
-  /** The check that makes the register trustworthy. */
+  /** The checks that make the register trustworthy. */
   reconciliation: {
     registerNbv: number;
     ledgerNbv: number;
@@ -59,6 +66,13 @@ export type AssetRegister = {
     ok: boolean;
     /** The accounts compared, so a difference can be chased. */
     accounts: string[];
+    /**
+     * Gross and accumulated are only meaningful once every asset carries an
+     * acquisition value; null means "not claimed", which is honest, where a
+     * zero would read as agreement.
+     */
+    gross: { register: number; ledger: number; difference: number; ok: boolean } | null;
+    accumulated: { register: number; ledger: number; difference: number; ok: boolean } | null;
   };
   /** Current year: what was posted, and what is still to come. */
   schedule: Array<{ month: string; posted: number; scheduled: number }>;
@@ -78,6 +92,8 @@ export async function getAssetRegister(
     `SELECT am.id, am.name, am.source_ref, am.start_date::text AS start_date,
             am.months, am.status,
             am.amount::float8       AS basis,
+            am.acquisition_value::float8    AS acquisition_value,
+            am.accumulated_at_start::float8 AS accumulated_at_start,
             COALESCE(am.residual_value, 0)::float8 AS residual,
             aa.code AS asset_code, aa.name AS asset_name,
             ca.code AS charge_code, ba.code AS accumulated_code,
@@ -95,21 +111,30 @@ export async function getAssetRegister(
        LEFT JOIN fiscal_periods fp ON fp.id = al.period_id
       WHERE am.team_id = $1
       GROUP BY am.id, am.name, am.source_ref, am.start_date, am.months, am.status,
-               am.amount, am.residual_value, aa.code, aa.name, ca.code, ba.code,
+               am.amount, am.acquisition_value, am.accumulated_at_start,
+               am.residual_value, aa.code, aa.name, ca.code, ba.code,
                aa.id, ba.id
       ORDER BY am.start_date, am.name`,
     [input.teamId],
   );
 
   const accountIds = new Set<string>();
+  const assetAccountIds = new Set<string>();
+  const accumAccountIds = new Set<string>();
   const assets: AssetRow[] = res.rows.map((x) => {
     const basis = Number(x.basis);
     const residual = Number(x.residual);
     const depreciated = r2(Number(x.depreciated));
     const posted = Number(x.posted_months);
     const months = Number(x.months);
-    if (x.asset_account_id) accountIds.add(x.asset_account_id);
-    if (x.balance_account_id) accountIds.add(x.balance_account_id);
+    if (x.asset_account_id) {
+      accountIds.add(x.asset_account_id);
+      assetAccountIds.add(x.asset_account_id);
+    }
+    if (x.balance_account_id) {
+      accountIds.add(x.balance_account_id);
+      accumAccountIds.add(x.balance_account_id);
+    }
     const lp = x.last_period as number | null;
     return {
       id: x.id,
@@ -123,6 +148,16 @@ export async function getAssetRegister(
       chargeCode: x.charge_code,
       accumulatedCode: x.accumulated_code,
       basis: r2(basis),
+      acquisitionValue:
+        x.acquisition_value === null ? null : r2(Number(x.acquisition_value)),
+      accumulatedAtStart:
+        x.accumulated_at_start === null
+          ? null
+          : r2(Number(x.accumulated_at_start)),
+      accumulatedTotal:
+        x.accumulated_at_start === null
+          ? null
+          : r2(Number(x.accumulated_at_start) + depreciated),
       residual: r2(residual),
       depreciated,
       netBookValue: r2(basis - depreciated),
@@ -152,10 +187,12 @@ export async function getAssetRegister(
   // all of class 2: a financial fixed asset outside the register would
   // otherwise read as a permanent, meaningless difference.
   let ledgerNbv = 0;
+  let ledgerGross = 0;
+  let ledgerAccumulated = 0;
   const accounts: string[] = [];
   if (accountIds.size > 0) {
     const bal = await client.query(
-      `SELECT a.code,
+      `SELECT a.id, a.code,
               ROUND(SUM(ll.debit - ll.credit)::numeric, 2)::float8 AS balance
          FROM ledger_lines ll
          JOIN journal_entries je ON je.id = ll.entry_id
@@ -163,15 +200,36 @@ export async function getAssetRegister(
          JOIN gl_accounts a ON a.id = ll.account_id
         WHERE ll.team_id = $1 AND ll.account_id = ANY($2::uuid[])
           AND je.date <= $3::date
-        GROUP BY a.code ORDER BY a.code`,
+        GROUP BY a.id, a.code ORDER BY a.code`,
       [input.teamId, [...accountIds], asOf],
     );
     for (const row of bal.rows) {
-      ledgerNbv = r2(ledgerNbv + Number(row.balance));
+      const v = Number(row.balance);
+      ledgerNbv = r2(ledgerNbv + v);
+      if (assetAccountIds.has(row.id)) ledgerGross = r2(ledgerGross + v);
+      // Accumulated depreciation is credit-natural; report it positive.
+      if (accumAccountIds.has(row.id)) ledgerAccumulated = r2(ledgerAccumulated - v);
       accounts.push(row.code);
     }
   }
   const difference = r2(totals.netBookValue - ledgerNbv);
+
+  // Gross and accumulated are claimed only when EVERY asset carries the
+  // history, because a partial sum would understate the register and read as a
+  // real difference. Silence is more honest than a number that means nothing.
+  const allHaveHistory =
+    assets.length > 0 &&
+    assets.every(
+      (a) => a.acquisitionValue !== null && a.accumulatedAtStart !== null,
+    );
+  const registerGross = allHaveHistory
+    ? assets.reduce((t, a) => r2(t + (a.acquisitionValue ?? 0)), 0)
+    : 0;
+  const registerAccumulated = allHaveHistory
+    ? assets.reduce((t, a) => r2(t + (a.accumulatedTotal ?? 0)), 0)
+    : 0;
+  const grossDiff = r2(registerGross - ledgerGross);
+  const accumDiff = r2(registerAccumulated - ledgerAccumulated);
 
   // Posted charge per month for the year, straight from the lines.
   const postedByMonth = new Map<number, number>();
@@ -241,6 +299,22 @@ export async function getAssetRegister(
       difference,
       ok: Math.abs(difference) < 0.005,
       accounts,
+      gross: allHaveHistory
+        ? {
+            register: registerGross,
+            ledger: ledgerGross,
+            difference: grossDiff,
+            ok: Math.abs(grossDiff) < 0.005,
+          }
+        : null,
+      accumulated: allHaveHistory
+        ? {
+            register: registerAccumulated,
+            ledger: ledgerAccumulated,
+            difference: accumDiff,
+            ok: Math.abs(accumDiff) < 0.005,
+          }
+        : null,
     },
     schedule,
   };

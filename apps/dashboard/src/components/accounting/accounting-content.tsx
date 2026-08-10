@@ -1111,12 +1111,16 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
           </p>
         </div>
         <div className="border bg-muted/20 p-4">
-          <p className="text-xs text-muted-foreground">Basis</p>
+          <p className="text-xs text-muted-foreground">
+            {rec.gross ? "Acquisition value" : "Basis"}
+          </p>
           <p className="mt-1 font-mono text-xl tabular-nums">
-            {eur0.format(data.totals.basis)}
+            {eur0.format(rec.gross ? rec.gross.register : data.totals.basis)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            what the schedules depreciate
+            {rec.gross
+              ? "what was paid, incl. non-deductible VAT"
+              : "what the schedules depreciate"}
           </p>
         </div>
         <div className="border bg-muted/20 p-4">
@@ -1145,17 +1149,53 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
             {rec.accounts.join(" · ") || "no asset accounts"}
           </span>
         </p>
-        <div className="grid max-w-md grid-cols-2 gap-1 text-sm">
-          <span className="text-muted-foreground">register net book value</span>
+        <div className="grid max-w-2xl grid-cols-4 gap-x-4 gap-y-1 text-sm">
+          <span className="text-xs text-muted-foreground" />
+          <span className="text-right text-xs text-muted-foreground">register</span>
+          <span className="text-right text-xs text-muted-foreground">ledger</span>
+          <span className="text-right text-xs text-muted-foreground">difference</span>
+
+          {rec.gross && (
+            <>
+              <span className="text-muted-foreground">acquisition value</span>
+              <span className="text-right font-mono tabular-nums">
+                {eur.format(rec.gross.register)}
+              </span>
+              <span className="text-right font-mono tabular-nums">
+                {eur.format(rec.gross.ledger)}
+              </span>
+              <span
+                className={`text-right font-mono tabular-nums ${rec.gross.ok ? "" : "text-destructive"}`}
+              >
+                {eur.format(rec.gross.difference)} {rec.gross.ok ? "✓" : "⚠"}
+              </span>
+            </>
+          )}
+          {rec.accumulated && (
+            <>
+              <span className="text-muted-foreground">accumulated depreciation</span>
+              <span className="text-right font-mono tabular-nums">
+                {eur.format(rec.accumulated.register)}
+              </span>
+              <span className="text-right font-mono tabular-nums">
+                {eur.format(rec.accumulated.ledger)}
+              </span>
+              <span
+                className={`text-right font-mono tabular-nums ${rec.accumulated.ok ? "" : "text-destructive"}`}
+              >
+                {eur.format(rec.accumulated.difference)}{" "}
+                {rec.accumulated.ok ? "✓" : "⚠"}
+              </span>
+            </>
+          )}
+          <span className={rec.ok ? "text-muted-foreground" : "text-destructive"}>
+            net book value
+          </span>
           <span className="text-right font-mono tabular-nums">
             {eur.format(rec.registerNbv)}
           </span>
-          <span className="text-muted-foreground">ledger net book value</span>
           <span className="text-right font-mono tabular-nums">
             {eur.format(rec.ledgerNbv)}
-          </span>
-          <span className={rec.ok ? "text-muted-foreground" : "text-destructive"}>
-            difference
           </span>
           <span
             className={`text-right font-mono tabular-nums ${rec.ok ? "" : "text-destructive"}`}
@@ -1163,6 +1203,12 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
             {eur.format(rec.difference)} {rec.ok ? "✓" : "⚠"}
           </span>
         </div>
+        {!rec.gross && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Acquisition history is missing on at least one asset, so only net
+            book value is reconciled.
+          </p>
+        )}
         {!rec.ok && (
           <p className="mt-2 text-xs text-destructive">
             The books and the register disagree. Usually a depreciation entry
@@ -1177,7 +1223,7 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
           <TableRow>
             <TableHead>Asset</TableHead>
             <TableHead>Acquired</TableHead>
-            <TableHead className="text-right">Basis</TableHead>
+            <TableHead className="text-right">Acquisition</TableHead>
             <TableHead className="text-right">Depreciated</TableHead>
             <TableHead className="text-right">Net book value</TableHead>
             <TableHead className="text-right">Monthly</TableHead>
@@ -1201,10 +1247,10 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
                 {a.startDate?.slice(0, 7)}
               </TableCell>
               <TableCell className="text-right">
-                <Amount value={a.basis} />
+                <Amount value={a.acquisitionValue ?? a.basis} />
               </TableCell>
               <TableCell className="text-right">
-                <Amount value={a.depreciated} />
+                <Amount value={a.accumulatedTotal ?? a.depreciated} />
               </TableCell>
               <TableCell className="text-right">
                 <Amount value={a.netBookValue} />
@@ -1220,10 +1266,16 @@ function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
           <TableRow className="font-medium">
             <TableCell colSpan={2}>Total</TableCell>
             <TableCell className="text-right">
-              <Amount value={data.totals.basis} />
+              <Amount value={rec.gross ? rec.gross.register : data.totals.basis} />
             </TableCell>
             <TableCell className="text-right">
-              <Amount value={data.totals.depreciated} />
+              <Amount
+                value={
+                  rec.accumulated
+                    ? rec.accumulated.register
+                    : data.totals.depreciated
+                }
+              />
             </TableCell>
             <TableCell className="text-right">
               <Amount value={data.totals.netBookValue} />
