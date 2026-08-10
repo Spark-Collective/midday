@@ -190,16 +190,34 @@ export async function getAssetRegister(
   // Forward months are COMPUTED: unposted lines do not exist yet. Each asset
   // contributes its monthly charge until its schedule runs out, and the final
   // month takes the rounding remainder so the asset lands exactly on residual.
+  //
+  // The first unposted month comes from the asset's OWN progress (start date
+  // plus months already posted), not from today. The engine posts on the 1st
+  // for the previous month, so on 10 August July is the last posted month and
+  // August is still due; anchoring on today would have shown August as zero.
+  // Deriving it per asset also makes a missed month show up as owed rather
+  // than silently vanishing.
   const scheduledByMonth = new Map<number, number>();
   for (const a of assets) {
     if (a.status !== "active" || a.remainingMonths <= 0) continue;
+    const start = new Date(`${a.startDate.slice(0, 10)}T00:00:00Z`);
+    const nextIndex =
+      start.getUTCFullYear() * 12 + start.getUTCMonth() + a.postedMonths;
     let left = r2(a.netBookValue - a.residual);
-    for (let m = asOfMonth + 1, i = 0; m <= 12 && i < a.remainingMonths; m++, i++) {
+    for (let i = 0; i < a.remainingMonths; i++) {
+      const idx = nextIndex + i;
+      const y = Math.floor(idx / 12);
+      const m = (idx % 12) + 1;
       const isLast = i === a.remainingMonths - 1;
       const charge = isLast ? left : Math.min(a.monthlyCharge, left);
       if (charge <= 0) break;
-      scheduledByMonth.set(m, r2((scheduledByMonth.get(m) ?? 0) + charge));
+      // Months already behind us but never posted still belong to the year
+      // they were due in, so they surface rather than disappearing.
+      if (y === year) {
+        scheduledByMonth.set(m, r2((scheduledByMonth.get(m) ?? 0) + charge));
+      }
       left = r2(left - charge);
+      if (y > year) break;
     }
   }
 

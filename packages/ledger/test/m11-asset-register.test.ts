@@ -134,6 +134,20 @@ describe("asset register (M11)", () => {
     expect(Math.round(scheduled * 100) / 100).toBe(900);
   });
 
+  test("a month that is due but unposted is owed, not skipped", async () => {
+    // Three months posted (Jan..Mar). Looking from June, April and May are
+    // overdue: the engine posts on the 1st for the previous month, so a gap
+    // must surface as scheduled rather than vanish because it sits in the past.
+    const r = await getAssetRegister(db, { teamId, asOf: "2026-06-15" });
+    const m = (mm: string) => r.schedule.find((s) => s.month === mm)!;
+    expect(m("2026-04").posted).toBe(0);
+    expect(m("2026-04").scheduled).toBe(100);
+    expect(m("2026-05").scheduled).toBe(100);
+    expect(m("2026-06").scheduled).toBe(100);
+    const scheduled = r.schedule.reduce((s, x) => s + x.scheduled, 0);
+    expect(Math.round(scheduled * 100) / 100).toBe(900);
+  });
+
   test("a depreciation posted OUTSIDE the register turns the check red", async () => {
     await postEntry(db, {
       teamId,
