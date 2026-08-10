@@ -10,7 +10,7 @@
  * The lifecycle is the point: `accepted` is a dated fact, which is what the
  * forecast was missing. Everything before it is a hope and contributes nothing.
  *
- * Design: docs/architecture/midday-proposals-2026-08-03.md.
+ * Design: docs/midday-os/specs/midday-proposals.md.
  */
 import type { PoolClient } from "pg";
 import { LedgerError } from "./post.js";

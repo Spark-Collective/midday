@@ -8,7 +8,7 @@
  * the two things the ledger cannot know: the plan (what should be paid monthly)
  * and the threshold the remuneration is measured against.
  *
- * Design: docs/architecture/midday-compliance-workflows-2026-08-02.md §4.
+ * Design: docs/midday-os/specs/midday-compliance.md §4.
  */
 import type { PoolClient } from "pg";
 import { LedgerError } from "./post.js";

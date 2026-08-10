@@ -1,6 +1,6 @@
 -- 0012_accounting_core.sql
 -- Accounting module M0: double-entry ledger core.
--- Design: docs/architecture/midday-accounting-implementation-plan-2026-07-20.md
+-- Design: docs/midday-os/specs/midday-accounting-plan.md
 -- (spark-workspace). All hard invariants live HERE, in Postgres (I1-I8):
 --   I1 posted entries balance (functional currency)
 --   I2 posted lines are immutable (correct via reversal, never UPDATE)

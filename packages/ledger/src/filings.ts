@@ -5,7 +5,7 @@
  * (due_date + status) and the workflow runner (steps jsonb). Generation is
  * idempotent, so the deadline job can run daily without creating duplicates.
  *
- * Design: docs/architecture/midday-compliance-workflows-2026-08-02.md.
+ * Design: docs/midday-os/specs/midday-compliance.md.
  */
 import type { PoolClient } from "pg";
 import { LedgerError } from "./post.js";

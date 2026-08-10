@@ -1,7 +1,7 @@
 -- 0039_compliance_workflows.sql
 -- Compliance layer C1 + C3 foundation: the year as a sequence of obligations, and
 -- the directors behind a one-person (or N-person) BV.
--- Design: docs/architecture/midday-compliance-workflows-2026-08-02.md (spark-workspace).
+-- Design: docs/midday-os/specs/midday-compliance.md (spark-workspace).
 --
 -- Numbering note: the accounting series ran 0012..0016 in parallel with upstream's
 -- own 0012.. files. This one takes the global next number (upstream head 0038) so

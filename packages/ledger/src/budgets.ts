@@ -7,7 +7,7 @@
  * trailing average. That also means budgets and the run rate must never both
  * count the same category, which is what `getOperatingPlan` exists to guarantee.
  *
- * Design: docs/architecture/midday-cash-forecast-2026-08-03.md.
+ * Design: docs/midday-os/specs/midday-cash-forecast.md.
  */
 import type { PoolClient } from "pg";
 import { LedgerError } from "./post.js";

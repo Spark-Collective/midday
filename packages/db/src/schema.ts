@@ -4241,7 +4241,7 @@ export const insightUserStatusRelations = relations(
 // ---------------------------------------------------------------------------
 // Accounting module (double-entry general ledger)
 //
-// Design: docs/architecture/midday-accounting-implementation-plan-2026-07-20.md
+// Design: docs/midday-os/specs/midday-accounting-plan.md
 // (spark-workspace). Documents (invoices, transactions) stay the UX; a posting
 // engine (@midday/accounting) writes balanced, immutable entries into this
 // ledger. All hard invariants (balance-on-post, immutability of posted lines,
@@ -4724,7 +4724,7 @@ export const ledgerLinesRelations = relations(ledgerLines, ({ one }) => ({
 
 // ---------------------------------------------------------------------------
 // Compliance layer (migration 0039): filings, directors, tax parameters.
-// Design: docs/architecture/midday-compliance-workflows-2026-08-02.md
+// Design: docs/midday-os/specs/midday-compliance.md
 // ---------------------------------------------------------------------------
 
 export const filingKindEnum = pgEnum("filing_kind", [

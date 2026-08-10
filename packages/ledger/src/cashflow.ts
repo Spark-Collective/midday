@@ -10,7 +10,7 @@
  * traced back to an invoice, a project or a filing. Same discipline as the
  * filings evidence rule: a number you cannot source is a number you cannot act on.
  *
- * Design: docs/architecture/midday-cash-forecast-2026-08-03.md.
+ * Design: docs/midday-os/specs/midday-cash-forecast.md.
  */
 import type { PoolClient } from "pg";
 import {
