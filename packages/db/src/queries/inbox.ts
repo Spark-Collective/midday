@@ -1936,6 +1936,7 @@ export type UpdateInboxWithProcessedDataParams = {
   taxType?: string;
   type?: "invoice" | "expense" | "other" | "credit_note" | null;
   invoiceNumber?: string;
+  billingReference?: string;
   status?:
     | "pending"
     | "new"

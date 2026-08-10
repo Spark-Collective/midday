@@ -352,6 +352,7 @@ export class ProcessAttachmentProcessor extends BaseProcessor<ProcessAttachmentP
           job.data.documentTypeHint ??
           (result.type as "invoice" | "expense" | null | undefined),
         invoiceNumber: result.invoice_number ?? undefined,
+        billingReference: job.data.billingReference ?? undefined,
         status: "analyzing", // Keep analyzing until matching is complete
       });
 

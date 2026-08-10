@@ -35,6 +35,9 @@ export const processAttachmentSchema = z.object({
   // code 381). Overrides extraction: PDFs routinely print credit notes with
   // positive amounts, so the sign alone cannot be trusted.
   documentTypeHint: z.enum(["credit_note"]).optional(),
+  // The invoice a credit note credits (Peppol BillingReference), captured at
+  // ingest so booking can pre-link without re-parsing the UBL.
+  billingReference: z.string().optional(),
 });
 
 export type ProcessAttachmentPayload = z.infer<typeof processAttachmentSchema>;

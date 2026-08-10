@@ -89,6 +89,13 @@ export class PeppolInboxSchedulerProcessor extends BaseProcessor<PeppolInboxPayl
         const isCreditNote =
           /credit/i.test(doc.type ?? "") ||
           /<(\w+:)?CreditNote[\s>]/.test(full.xml ?? "");
+        // A UBL credit note names the invoice it credits:
+        // BillingReference/InvoiceDocumentReference/ID.
+        const billingReference = isCreditNote
+          ? full.xml?.match(
+              /<(?:\w+:)?BillingReference>[\s\S]*?<(?:\w+:)?ID[^>]*>([^<]+)</,
+            )?.[1]
+          : undefined;
 
         await inboxQueue.add("process-attachment", {
           filePath,
@@ -98,6 +105,7 @@ export class PeppolInboxSchedulerProcessor extends BaseProcessor<PeppolInboxPayl
           teamId,
           referenceId,
           documentTypeHint: isCreditNote ? "credit_note" : undefined,
+          billingReference,
         });
 
         imported++;

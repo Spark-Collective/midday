@@ -55,16 +55,41 @@ const emptyLine = (): DraftLine => ({
 
 const num = (s: string) => (s.trim() === "" ? 0 : Number(s));
 
-function CreateSheet({ onClose }: { onClose: () => void }) {
+/** Prefill for "book as purchase document" from an inbox row. */
+export type CreatePrefill = {
+  supplierName?: string;
+  documentNumber?: string;
+  kind?: "invoice" | "credit_note";
+  creditsDocumentNumber?: string;
+  issueDate?: string;
+  inboxId?: string;
+  lines?: DraftLine[];
+};
+
+function CreateSheet({
+  onClose,
+  initial,
+}: {
+  onClose: () => void;
+  initial?: CreatePrefill;
+}) {
   const today = new Date().toISOString().slice(0, 10);
-  const [supplierName, setSupplierName] = useState("");
+  const [supplierName, setSupplierName] = useState(initial?.supplierName ?? "");
   const [supplierVat, setSupplierVat] = useState("");
-  const [documentNumber, setDocumentNumber] = useState("");
-  const [kind, setKind] = useState<"invoice" | "credit_note">("invoice");
-  const [creditsNumber, setCreditsNumber] = useState("");
-  const [issueDate, setIssueDate] = useState(today);
+  const [documentNumber, setDocumentNumber] = useState(
+    initial?.documentNumber ?? "",
+  );
+  const [kind, setKind] = useState<"invoice" | "credit_note">(
+    initial?.kind ?? "invoice",
+  );
+  const [creditsNumber, setCreditsNumber] = useState(
+    initial?.creditsDocumentNumber ?? "",
+  );
+  const [issueDate, setIssueDate] = useState(initial?.issueDate ?? today);
   const [dueDate, setDueDate] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(
+    initial?.lines ?? [emptyLine()],
+  );
   const trpc = useTRPC();
   const qc = useQueryClient();
 
@@ -249,6 +274,7 @@ function CreateSheet({ onClose }: { onClose: () => void }) {
                     ? creditsNumber
                     : undefined,
                 issueDate,
+                inboxId: initial?.inboxId,
                 dueDate: dueDate || undefined,
                 lines: lines
                   .filter((l) => num(l.amount) > 0)
@@ -270,20 +296,43 @@ function CreateSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** taxRate from the inbox row -> our tax code symbols. */
+function taxCodeFor(rate: number | null | undefined): string {
+  if (rate === 21) return "P21";
+  if (rate === 6) return "P06";
+  return "";
+}
+
 export function PurchaseDocumentsContent() {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<CreatePrefill | boolean>(false);
   const trpc = useTRPC();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery(
     trpc.purchaseDocuments.list.queryOptions({}),
   );
-  const invalidate = () =>
+  const { data: openItems } = useQuery(
+    trpc.purchaseDocuments.openItems.queryOptions(),
+  );
+  const { data: candidates } = useQuery(
+    trpc.purchaseDocuments.inboxCandidates.queryOptions(),
+  );
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: trpc.purchaseDocuments.list.queryKey() });
+    qc.invalidateQueries({
+      queryKey: trpc.purchaseDocuments.openItems.queryKey(),
+    });
+    qc.invalidateQueries({
+      queryKey: trpc.purchaseDocuments.inboxCandidates.queryKey(),
+    });
+  };
   const post = useMutation(
     trpc.purchaseDocuments.post.mutationOptions({ onSuccess: invalidate }),
   );
   const remove = useMutation(
     trpc.purchaseDocuments.delete.mutationOptions({ onSuccess: invalidate }),
+  );
+  const settle = useMutation(
+    trpc.purchaseDocuments.settle.mutationOptions({ onSuccess: invalidate }),
   );
 
   const numbersById = new Map(
@@ -303,6 +352,125 @@ export function PurchaseDocumentsContent() {
         </div>
         <Button onClick={() => setCreating(true)}>Nieuw document</Button>
       </div>
+
+      {(openItems ?? []).length > 0 && (
+        <div className="border bg-muted/20 p-4">
+          <h2 className="text-sm">Open posten per leverancier</h2>
+          <div className="mt-3 space-y-3">
+            {(openItems ?? []).map((g) => (
+              <div
+                key={g.supplier}
+                className="flex flex-wrap items-center justify-between gap-2 border-b pb-3 last:border-b-0 last:pb-0"
+              >
+                <div>
+                  <p className="text-sm">{g.supplier}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {g.documents
+                      .map(
+                        (d) =>
+                          `${d.kind === "credit_note" ? "CN " : ""}${d.documentNumber} (${eur.format(d.open)})`,
+                      )
+                      .join(" · ")}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm tabular-nums">
+                    {eur.format(g.net)}
+                  </span>
+                  {g.candidates.map((c) => (
+                    <Button
+                      key={c.id}
+                      variant="outline"
+                      size="sm"
+                      disabled={settle.isPending}
+                      onClick={() =>
+                        settle.mutate({
+                          transactionId: c.id,
+                          documentIds: g.documents.map((d) => d.id),
+                        })
+                      }
+                    >
+                      Afpunten met {c.date} ({eur.format(Math.abs(c.amount))})
+                    </Button>
+                  ))}
+                  {g.candidates.length === 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      wacht op betaling
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          {settle.isError && (
+            <p className="mt-2 text-xs text-destructive">
+              {settle.error.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      {(candidates ?? []).length > 0 && (
+        <div className="border bg-muted/20 p-4">
+          <h2 className="text-sm">Uit de inbox</h2>
+          <p className="text-xs text-muted-foreground">
+            Documenten zonder gematchte banktransactie; boek ze als
+            aankoopdocument.
+          </p>
+          <div className="mt-3 space-y-2">
+            {(candidates ?? []).map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="text-sm">
+                  {c.displayName ?? "?"}{" "}
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {c.invoiceNumber}
+                  </span>
+                  {c.type === "credit_note" && (
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      creditnota{c.billingReference ? ` op ${c.billingReference}` : ""}
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-sm tabular-nums">
+                    {eur.format(Number(c.amount))}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const gross = Math.abs(Number(c.amount ?? 0));
+                      const tax = Math.abs(Number(c.taxAmount ?? 0));
+                      setCreating({
+                        supplierName: c.displayName ?? "",
+                        documentNumber: c.invoiceNumber ?? "",
+                        kind:
+                          c.type === "credit_note" ? "credit_note" : "invoice",
+                        creditsDocumentNumber: c.billingReference ?? "",
+                        issueDate: c.date ?? undefined,
+                        inboxId: c.id,
+                        lines: [
+                          {
+                            ...emptyLine(),
+                            amount: String(Math.round((gross - tax) * 100) / 100),
+                            taxAmount: tax ? String(tax) : "",
+                            taxCode: taxCodeFor(Number(c.taxRate)),
+                          },
+                        ],
+                      });
+                    }}
+                  >
+                    Boek
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Laden...</p>
@@ -380,7 +548,12 @@ export function PurchaseDocumentsContent() {
         </Table>
       )}
 
-      {creating && <CreateSheet onClose={() => setCreating(false)} />}
+      {creating && (
+        <CreateSheet
+          initial={typeof creating === "object" ? creating : undefined}
+          onClose={() => setCreating(false)}
+        />
+      )}
     </div>
   );
 }

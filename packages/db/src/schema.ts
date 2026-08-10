@@ -2517,6 +2517,9 @@ export const inbox = pgTable(
     inboxAccountId: uuid("inbox_account_id"),
     invoiceNumber: text("invoice_number"),
     groupedInboxId: uuid("grouped_inbox_id"),
+    // Migration 0050: the invoice a credit note credits, from the Peppol
+    // BillingReference. Pre-links credits_document_id when booking.
+    billingReference: text("billing_reference"),
   },
   (table) => [
     index("inbox_attachment_id_idx").using(
