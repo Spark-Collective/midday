@@ -14,6 +14,7 @@ import { documentTagAssignmentsRouter } from "./document-tag-assignments";
 import { documentTagsRouter } from "./document-tags";
 import { documentsRouter } from "./documents";
 import { expenseNotesRouter } from "./expense-notes";
+import { purchaseDocumentsRouter } from "./purchase-documents";
 import { filingsRouter } from "./filings";
 import { inboxRouter } from "./inbox";
 import { inboxAccountsRouter } from "./inbox-accounts";
@@ -73,6 +74,7 @@ export const appRouter = createTRPCRouter({
   cashflow: cashflowRouter,
   filings: filingsRouter,
   expenseNotes: expenseNotesRouter,
+  purchaseDocuments: purchaseDocumentsRouter,
   ledger: ledgerRouter,
   owner: ownerRouter,
   proposals: proposalsRouter,

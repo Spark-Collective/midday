@@ -79,6 +79,7 @@ const items = [
       { path: "/invoices/products", name: "Products" },
       { path: "/invoices?invoiceType=create", name: "Create new" },
       { path: "/expense-notes", name: "Expense notes" },
+      { path: "/purchase-documents", name: "Purchases" },
     ],
   },
   {

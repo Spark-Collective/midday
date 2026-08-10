@@ -119,6 +119,10 @@ export {
   type PostExpenseNoteInput,
   postExpenseNote,
 } from "./post-expense-note.js";
+export {
+  type PostPurchaseDocumentInput,
+  postPurchaseDocument,
+} from "./post-purchase-document.js";
 export { type PostInvoiceInput, postInvoice } from "./post-invoice.js";
 export {
   type PostTransactionInput,

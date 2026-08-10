@@ -67,6 +67,11 @@ const M48 = readFileSync(
   "utf8",
 );
 
+const M49 = readFileSync(
+  join(import.meta.dir, "../../../db/migrations/0049_purchase_documents.sql"),
+  "utf8",
+);
+
 const M47 = readFileSync(
   join(
     import.meta.dir,
@@ -100,7 +105,8 @@ const BOOTSTRAP = `
   DROP VIEW IF EXISTS v_general_ledger;
   DROP VIEW IF EXISTS v_open_items;
   DROP VIEW IF EXISTS v_verworpen_uitgaven;
-  DROP TABLE IF EXISTS expense_note_lines, expense_notes,
+  DROP TABLE IF EXISTS purchase_document_lines, purchase_documents, inbox,
+    expense_note_lines, expense_notes,
     budgets, cash_forecast_snapshots, proposals, tracker_projects,
     customers, filings, director_items, directors, tax_parameters,
     amortization_lines, amortizations,
@@ -176,6 +182,17 @@ const BOOTSTRAP = `
     rate numeric(10,2), currency text, estimate bigint,
     billable boolean DEFAULT false, status text DEFAULT 'in_progress'
   );
+  -- Minimal inbox stub: migration 0049 references it (FK + enum alter).
+  DO $do$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'inbox_type') THEN
+      CREATE TYPE inbox_type AS ENUM ('invoice', 'expense', 'other');
+    END IF;
+  END $do$;
+  CREATE TABLE inbox (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id uuid NOT NULL, display_name text, amount numeric(10,2),
+    currency text, type inbox_type, status text DEFAULT 'pending'
+  );
 `;
 
 /** Fresh accounting schema on the connection; returns a new team id. */
@@ -195,6 +212,7 @@ export async function initTestDb(db: PoolClient): Promise<string> {
   await db.query(M46);
   await db.query(M47);
   await db.query(M48);
+  await db.query(M49);
   const team = await db.query(
     `INSERT INTO teams (base_currency) VALUES ('EUR') RETURNING id`,
   );

@@ -13,6 +13,7 @@ export * from "./document-tags";
 export * from "./documents";
 export * from "./exhange-rates";
 export * from "./expense-notes";
+export * from "./purchase-documents";
 export * from "./inbox";
 export * from "./inbox-accounts";
 export * from "./inbox-blocklist";

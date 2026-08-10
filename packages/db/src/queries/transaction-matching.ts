@@ -603,12 +603,30 @@ const AUTO_MATCH_ENABLED = process.env.MATCH_AUTO_ENABLED === "true";
  */
 export const AUTO_MATCH_MIN_AMOUNT_SCORE = 0.85;
 
+/**
+ * Direction guard: a document and a transaction must move money in opposite
+ * directions. An invoice/receipt (positive) is settled by an outflow
+ * (negative); a credit note (negative) by a refund inflow (positive) — every
+ * matched pair in production has opposite signs. The scorer compares
+ * Math.abs() of both amounts, so without this a -113.72 credit note scores
+ * identically against a +113.72 refund and a -113.72 payment. Missing or
+ * zero amounts carry no direction signal and pass.
+ */
+export function matchDirectionAgrees(
+  inboxAmount: number | null | undefined,
+  transactionAmount: number | null | undefined,
+): boolean {
+  if (!inboxAmount || !transactionAmount) return true;
+  return inboxAmount * transactionAmount < 0;
+}
+
 function resolveMatchType(
   confidence: number,
   canAutoMatch: boolean,
   nameScore: number,
   autoThreshold: number,
   amountScore: number,
+  directionAgrees: boolean,
 ): MatchType {
   const amountAgrees = amountScore >= AUTO_MATCH_MIN_AMOUNT_SCORE;
   if (
@@ -616,11 +634,12 @@ function resolveMatchType(
     confidence >= autoThreshold &&
     canAutoMatch &&
     nameScore >= 0.4 &&
-    amountAgrees
+    amountAgrees &&
+    directionAgrees
   ) {
     return "auto_matched";
   }
-  if (confidence >= 0.72 && amountAgrees) {
+  if (confidence >= 0.72 && amountAgrees && directionAgrees) {
     return "high_confidence";
   }
   return "suggested";
@@ -834,6 +853,7 @@ export async function findMatches(
         nameScore,
         autoThreshold,
         amountScore,
+        matchDirectionAgrees(inboxItem.amount, candidate.amount),
       ),
       isAlreadyMatched: false,
     };
@@ -1051,6 +1071,7 @@ export async function findInboxMatches(
         nameScore,
         autoThreshold,
         amountScore,
+        matchDirectionAgrees(candidate.amount, transactionItem.amount),
       ),
       isAlreadyMatched: false,
     };

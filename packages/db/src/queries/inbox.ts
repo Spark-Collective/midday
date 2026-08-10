@@ -1934,7 +1934,7 @@ export type UpdateInboxWithProcessedDataParams = {
   taxAmount?: number;
   taxRate?: number;
   taxType?: string;
-  type?: "invoice" | "expense" | "other" | null;
+  type?: "invoice" | "expense" | "other" | "credit_note" | null;
   invoiceNumber?: string;
   status?:
     | "pending"

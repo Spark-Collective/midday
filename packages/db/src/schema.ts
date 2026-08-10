@@ -129,6 +129,7 @@ export const inboxTypeEnum = pgEnum("inbox_type", [
   "invoice",
   "expense",
   "other",
+  "credit_note",
 ]);
 export const inboxBlocklistTypeEnum = pgEnum("inbox_blocklist_type", [
   "email",
@@ -5114,6 +5115,80 @@ export const expenseNoteLines = pgTable(
   (table) => [
     index("expense_note_lines_note_idx").on(
       table.expenseNoteId,
+      table.position,
+    ),
+  ],
+);
+
+// Purchase documents (migration 0049): incoming supplier invoices and credit
+// notes as records. ERPNext-shaped: a credit note is the same record with a
+// kind flag and a link to the invoice it credits. Amounts are positive; kind
+// carries the direction.
+export const purchaseDocuments = pgTable(
+  "purchase_documents",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    supplierName: text("supplier_name").notNull(),
+    supplierVat: text("supplier_vat"),
+    documentNumber: text("document_number").notNull(),
+    kind: text().notNull(),
+    creditsDocumentId: uuid("credits_document_id"),
+    issueDate: date("issue_date").notNull(),
+    dueDate: date("due_date"),
+    currency: text().default("EUR").notNull(),
+    amount: numericCasted({ precision: 12, scale: 2 }).notNull(),
+    taxAmount: numericCasted("tax_amount", { precision: 12, scale: 2 })
+      .default(0)
+      .notNull(),
+    inboxId: uuid("inbox_id"),
+    journalEntryId: uuid("journal_entry_id"),
+    status: text().default("draft").notNull(),
+    notes: text(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    unique("purchase_documents_inbox_unique").on(table.teamId, table.inboxId),
+    index("purchase_documents_team_idx").on(
+      table.teamId,
+      table.issueDate.desc(),
+    ),
+    index("purchase_documents_supplier_idx").on(
+      table.teamId,
+      table.supplierName,
+    ),
+  ],
+);
+
+export const purchaseDocumentLines = pgTable(
+  "purchase_document_lines",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    purchaseDocumentId: uuid("purchase_document_id")
+      .notNull()
+      .references(() => purchaseDocuments.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    position: integer().default(0).notNull(),
+    description: text().notNull(),
+    glAccountCode: text("gl_account_code").notNull(),
+    amount: numericCasted({ precision: 12, scale: 2 }).notNull(),
+    taxCode: text("tax_code"),
+    taxAmount: numericCasted("tax_amount", { precision: 12, scale: 2 })
+      .default(0)
+      .notNull(),
+  },
+  (table) => [
+    index("purchase_document_lines_doc_idx").on(
+      table.purchaseDocumentId,
       table.position,
     ),
   ],

@@ -346,7 +346,11 @@ export class ProcessAttachmentProcessor extends BaseProcessor<ProcessAttachmentP
         taxAmount: result.tax_amount ?? undefined,
         taxRate: result.tax_rate ?? undefined,
         taxType: result.tax_type ?? undefined,
-        type: result.type as "invoice" | "expense" | null | undefined,
+        // The transport's type hint (Peppol UBL root) beats extraction: PDFs
+        // routinely print credit notes with positive amounts.
+        type:
+          job.data.documentTypeHint ??
+          (result.type as "invoice" | "expense" | null | undefined),
         invoiceNumber: result.invoice_number ?? undefined,
         status: "analyzing", // Keep analyzing until matching is complete
       });

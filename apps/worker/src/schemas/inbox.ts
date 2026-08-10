@@ -31,6 +31,10 @@ export const processAttachmentSchema = z.object({
   website: z.string().optional(),
   senderEmail: z.string().email().optional(),
   inboxAccountId: z.string().uuid().optional(),
+  // Authoritative document type from the transport (Peppol UBL root / type
+  // code 381). Overrides extraction: PDFs routinely print credit notes with
+  // positive amounts, so the sign alone cannot be trusted.
+  documentTypeHint: z.enum(["credit_note"]).optional(),
 });
 
 export type ProcessAttachmentPayload = z.infer<typeof processAttachmentSchema>;

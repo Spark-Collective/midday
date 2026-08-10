@@ -39,7 +39,7 @@ export type ProcessInboxUploadResult = {
   amount: number | null;
   currency: string | null;
   date: string | null;
-  type: "invoice" | "expense" | "other" | null;
+  type: "invoice" | "expense" | "other" | "credit_note" | null;
   invoiceNumber?: string | null;
   taxAmount?: number | null;
   taxType?: string | null;

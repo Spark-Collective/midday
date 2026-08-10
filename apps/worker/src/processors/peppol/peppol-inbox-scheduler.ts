@@ -84,6 +84,12 @@ export class PeppolInboxSchedulerProcessor extends BaseProcessor<PeppolInboxPayl
           continue;
         }
 
+        // The transport knows the document type authoritatively: Recommand
+        // labels credit notes, and the UBL root element is <CreditNote>.
+        const isCreditNote =
+          /credit/i.test(doc.type ?? "") ||
+          /<(\w+:)?CreditNote[\s>]/.test(full.xml ?? "");
+
         await inboxQueue.add("process-attachment", {
           filePath,
           mimetype,
@@ -91,6 +97,7 @@ export class PeppolInboxSchedulerProcessor extends BaseProcessor<PeppolInboxPayl
           senderEmail: undefined,
           teamId,
           referenceId,
+          documentTypeHint: isCreditNote ? "credit_note" : undefined,
         });
 
         imported++;
