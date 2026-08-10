@@ -4,6 +4,7 @@ import {
   buildAnnualAccountsXbrl,
   closePeriod,
   computeVatGrids,
+  getAssetRegister,
   generateVatReturn,
   getAnnualAccounts,
   getEntry,
@@ -188,6 +189,14 @@ export const ledgerRouter = createTRPCRouter({
     .query(async ({ ctx: { teamId }, input }) => {
       return getEntry(ledgerDb(), { teamId: teamId!, entryId: input.entryId });
     }),
+
+  // Asset register (M11): what we own, what it is worth, and the year's
+  // depreciation charge. Read-only over the amortization engine.
+  assets: protectedProcedure
+    .input(z.object({ asOf: z.string().date().optional() }).optional())
+    .query(async ({ ctx: { teamId }, input }) =>
+      getAssetRegister(ledgerDb(), { teamId: teamId!, asOf: input?.asOf }),
+    ),
 
   // Grouped financial statements (M7): resultatenrekening + balans, with an
   // optional comparison year. The current year is cut at today (YTD).

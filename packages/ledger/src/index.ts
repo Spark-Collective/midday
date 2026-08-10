@@ -192,3 +192,8 @@ export {
   type VatPeriod,
   type VatReturnResult,
 } from "./vat-return.js";
+export {
+  getAssetRegister,
+  type AssetRegister,
+  type AssetRow,
+} from "./assets.js";

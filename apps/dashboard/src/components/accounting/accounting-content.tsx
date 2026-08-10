@@ -1082,6 +1082,201 @@ function VatReturnTab() {
   );
 }
 
+/**
+ * Assets: the register, its reconciliation against the books, and this year's
+ * depreciation charge. Read-only over the amortization engine.
+ */
+function AssetsTab({ onDrill }: { onDrill: (preset: GlPreset) => void }) {
+  const trpc = useTRPC();
+  const { data, isLoading } = useQuery(trpc.ledger.assets.queryOptions({}));
+  if (isLoading || !data)
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  const rec = data.reconciliation;
+  const maxCharge = Math.max(
+    ...data.schedule.map((s) => s.posted + s.scheduled),
+    1,
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="border bg-muted/20 p-4">
+          <p className="text-xs text-muted-foreground">Net book value</p>
+          <p className="mt-1 font-mono text-xl tabular-nums">
+            {eur0.format(data.totals.netBookValue)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {data.assets.length} assets
+          </p>
+        </div>
+        <div className="border bg-muted/20 p-4">
+          <p className="text-xs text-muted-foreground">Basis</p>
+          <p className="mt-1 font-mono text-xl tabular-nums">
+            {eur0.format(data.totals.basis)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            what the schedules depreciate
+          </p>
+        </div>
+        <div className="border bg-muted/20 p-4">
+          <p className="text-xs text-muted-foreground">Depreciated</p>
+          <p className="mt-1 font-mono text-xl tabular-nums">
+            {eur0.format(data.totals.depreciated)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">since the register began</p>
+        </div>
+        <div className="border bg-muted/20 p-4">
+          <p className="text-xs text-muted-foreground">Monthly charge</p>
+          <p className="mt-1 font-mono text-xl tabular-nums">
+            {eur0.format(data.totals.monthlyCharge)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">assets still running</p>
+        </div>
+      </div>
+
+      {/* The check that makes the register trustworthy: NBV, never gross. */}
+      <div
+        className={`border p-4 ${rec.ok ? "" : "border-destructive bg-destructive/5"}`}
+      >
+        <p className="mb-2 text-sm font-medium">
+          Reconciliation against the ledger{" "}
+          <span className="ml-1 text-xs font-normal text-muted-foreground">
+            {rec.accounts.join(" · ") || "no asset accounts"}
+          </span>
+        </p>
+        <div className="grid max-w-md grid-cols-2 gap-1 text-sm">
+          <span className="text-muted-foreground">register net book value</span>
+          <span className="text-right font-mono tabular-nums">
+            {eur.format(rec.registerNbv)}
+          </span>
+          <span className="text-muted-foreground">ledger net book value</span>
+          <span className="text-right font-mono tabular-nums">
+            {eur.format(rec.ledgerNbv)}
+          </span>
+          <span className={rec.ok ? "text-muted-foreground" : "text-destructive"}>
+            difference
+          </span>
+          <span
+            className={`text-right font-mono tabular-nums ${rec.ok ? "" : "text-destructive"}`}
+          >
+            {eur.format(rec.difference)} {rec.ok ? "✓" : "⚠"}
+          </span>
+        </div>
+        {!rec.ok && (
+          <p className="mt-2 text-xs text-destructive">
+            The books and the register disagree. Usually a depreciation entry
+            posted by hand outside the register, or an asset bought but never
+            added to it.
+          </p>
+        )}
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Asset</TableHead>
+            <TableHead>Acquired</TableHead>
+            <TableHead className="text-right">Basis</TableHead>
+            <TableHead className="text-right">Depreciated</TableHead>
+            <TableHead className="text-right">Net book value</TableHead>
+            <TableHead className="text-right">Monthly</TableHead>
+            <TableHead className="text-right">Progress</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.assets.map((a) => (
+            <TableRow
+              key={a.id}
+              className="cursor-pointer hover:bg-muted/30"
+              onClick={() => onDrill({ accountCode: a.assetCode })}
+            >
+              <TableCell>
+                {a.name}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {a.assetCode}
+                </span>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                {a.startDate?.slice(0, 7)}
+              </TableCell>
+              <TableCell className="text-right">
+                <Amount value={a.basis} />
+              </TableCell>
+              <TableCell className="text-right">
+                <Amount value={a.depreciated} />
+              </TableCell>
+              <TableCell className="text-right">
+                <Amount value={a.netBookValue} />
+              </TableCell>
+              <TableCell className="text-right">
+                <Amount value={a.remainingMonths > 0 ? a.monthlyCharge : 0} />
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {a.postedMonths}/{a.months}
+              </TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="font-medium">
+            <TableCell colSpan={2}>Total</TableCell>
+            <TableCell className="text-right">
+              <Amount value={data.totals.basis} />
+            </TableCell>
+            <TableCell className="text-right">
+              <Amount value={data.totals.depreciated} />
+            </TableCell>
+            <TableCell className="text-right">
+              <Amount value={data.totals.netBookValue} />
+            </TableCell>
+            <TableCell className="text-right">
+              <Amount value={data.totals.monthlyCharge} />
+            </TableCell>
+            <TableCell />
+          </TableRow>
+        </TableBody>
+      </Table>
+
+      <div className="border p-4">
+        <p className="mb-3 text-sm font-medium">
+          Depreciation {data.year}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            posted vs still scheduled
+          </span>
+        </p>
+        <div className="flex h-32 items-end gap-2">
+          {data.schedule.map((s) => (
+            <div key={s.month} className="flex flex-1 flex-col items-center gap-1">
+              <div className="flex h-24 w-full flex-col justify-end">
+                <div
+                  className="w-full bg-muted-foreground/30"
+                  title={`Scheduled ${eur.format(s.scheduled)}`}
+                  style={{ height: `${(s.scheduled / maxCharge) * 100}%` }}
+                />
+                <div
+                  className="w-full bg-primary"
+                  title={`Posted ${eur.format(s.posted)}`}
+                  style={{ height: `${(s.posted / maxCharge) * 100}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {s.month.slice(5)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 bg-primary" /> posted
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2 w-2 bg-muted-foreground/30" /> scheduled
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AccountingContent() {
   const [tab, setTab] = useState("overview");
   const [glPreset, setGlPreset] = useState<GlPreset | null>(null);
@@ -1135,6 +1330,12 @@ export function AccountingContent() {
           </TabsTrigger>
           <TabsTrigger
             className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+            value="assets"
+          >
+            Assets
+          </TabsTrigger>
+          <TabsTrigger
+            className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[#878787] transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
             value="trial-balance"
           >
             Trial balance
@@ -1169,6 +1370,9 @@ export function AccountingContent() {
         </TabsContent>
         <TabsContent value="periods">
           <PeriodsTab />
+        </TabsContent>
+        <TabsContent value="assets">
+          <AssetsTab onDrill={drill} />
         </TabsContent>
         <TabsContent value="trial-balance">
           <TrialBalanceTab />
