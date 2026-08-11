@@ -125,10 +125,20 @@ function buildInsights(data: SummaryData, locale?: string | null): Insight[] {
   if (data.transactionsToReview.count > 0) {
     insights.push({
       key: "transactions",
-      href: "/transactions?tab=review",
+      href: "/transactions",
       before: "You have ",
       link: `${data.transactionsToReview.count} ${data.transactionsToReview.count === 1 ? "transaction" : "transactions"}`,
-      after: " ready to review and export.",
+      after: " waiting to be booked into the ledger.",
+    });
+  }
+
+  if (data.missingDocuments.count > 0) {
+    insights.push({
+      key: "missing-documents",
+      href: "/transactions?attachments=exclude",
+      before: "This year, ",
+      link: `${data.missingDocuments.count} ${data.missingDocuments.count === 1 ? "transaction" : "transactions"}`,
+      after: ` ${data.missingDocuments.count === 1 ? "is" : "are"} still missing a document.`,
     });
   }
 

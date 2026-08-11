@@ -94,8 +94,12 @@ export function WidgetCards() {
   const reviewValue = String(data.transactionsToReview.count);
   const reviewDetail =
     data.transactionsToReview.count === 0
-      ? "All up to date"
-      : "To book";
+      ? data.missingDocuments.count === 0
+        ? "All booked, all documented"
+        : `booked; ${data.missingDocuments.count} missing a document`
+      : data.missingDocuments.count === 0
+        ? "To book"
+        : `to book; ${data.missingDocuments.count} missing a document`;
 
   const inboxValue = String(data.inboxPending.count);
   const inboxDetail =
@@ -123,7 +127,7 @@ export function WidgetCards() {
       />
       <WidgetCard
         label="Transactions"
-        href="/transactions?tab=review"
+        href="/transactions"
         value={reviewValue}
         detail={reviewDetail}
       />
