@@ -6,6 +6,7 @@ import {
   getSearchTool,
   getToolDefinitions,
 } from "@api/chat/tools";
+import { getWebSearchTool } from "@api/chat/web-search";
 import { getComposioTools } from "@api/composio/client";
 import type { McpContext } from "@api/mcp/types";
 import { logger } from "@midday/logger";
@@ -48,18 +49,20 @@ export async function streamMiddayAssistant(params: {
     }
 
     const agent = new ToolLoopAgent({
-      // Gemini (the box's only LLM key). No web_search: Gemini rejects its
-      // search-grounding tool alongside function calling in one request.
+      // Gemini (the box's only LLM key). Its search-grounding tool cannot ride
+      // in the same request as function calling, so web_search is a normal
+      // tool that makes its own grounded call (see chat/web-search.ts).
       model: google("gemini-2.5-flash"),
       instructions: systemPrompt,
       tools: {
         ...mcpTools,
         ...composioMetaTools,
         search_tools: getSearchTool(),
+        web_search: getWebSearchTool(),
       },
       prepareStep: buildPrepareStep({
         maxTools: 12,
-        alwaysActive: ["search_tools", ...composioToolNames],
+        alwaysActive: ["search_tools", "web_search", ...composioToolNames],
       }),
       stopWhen: stepCountIs(10),
       onFinish: closeClient,
