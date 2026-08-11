@@ -17,38 +17,48 @@ import { getBillableHours } from "./tracker-entries";
  *   missingDocument  transactions with neither an attachment nor a matched
  *                    inbox item (transfers carry no documents, skipped)
  */
+/**
+ * One statement with an explicit alias, deliberately NOT a drizzle
+ * `select({...})` projection: interpolating `${transactions.id}` into a
+ * projection renders it unqualified as `"id"`, which a correlated subquery
+ * silently resolves to the INNER table's id. That yields a never-true
+ * condition and a plausible wrong count rather than an error (it shipped
+ * 297/297 once). Exported so a test can assert the correlation survives.
+ */
+export function ledgerReviewStatsQuery(teamId: string, since: string) {
+  return sql`
+    SELECT
+      COUNT(*) FILTER (WHERE NOT EXISTS (
+        SELECT 1 FROM journal_entries je
+         WHERE je.source_id = t.id
+           AND je.status IN ('posted', 'reversed')))::int AS to_book,
+      COUNT(*) FILTER (WHERE
+        t.category_slug IS DISTINCT FROM 'transfer'
+        AND NOT EXISTS (
+          SELECT 1 FROM transaction_attachments ta
+           WHERE ta.transaction_id = t.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM inbox i
+           WHERE i.transaction_id = t.id AND i.status <> 'deleted'))::int
+        AS missing_document
+    FROM transactions t
+   WHERE t.team_id = ${teamId}
+     AND t.status = 'posted'
+     AND t.date >= ${since}`;
+}
+
 async function getLedgerReviewStats(
   db: Database,
   teamId: string,
 ): Promise<{ toBook: number; missingDocument: number }> {
   const start = process.env.LEDGER_START_DATE || "2026-01-01";
-  const [row] = await db
-    .select({
-      toBook: sql<number>`COUNT(*) FILTER (WHERE NOT EXISTS (
-        SELECT 1 FROM journal_entries je
-         WHERE je.source_id = ${transactions.id}
-           AND je.status IN ('posted', 'reversed')))`.mapWith(Number),
-      missingDocument: sql<number>`COUNT(*) FILTER (WHERE
-        ${transactions.categorySlug} IS DISTINCT FROM 'transfer'
-        AND NOT EXISTS (
-          SELECT 1 FROM transaction_attachments ta
-           WHERE ta.transaction_id = ${transactions.id})
-        AND NOT EXISTS (
-          SELECT 1 FROM inbox i
-           WHERE i.transaction_id = ${transactions.id}
-             AND i.status <> 'deleted'))`.mapWith(Number),
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.teamId, teamId),
-        eq(transactions.status, "posted"),
-        sql`${transactions.date} >= ${start}`,
-      ),
-    );
+  const result = await db.execute(ledgerReviewStatsQuery(teamId, start));
+  const row = (result.rows ?? result)[0] as
+    | { to_book: number; missing_document: number }
+    | undefined;
   return {
-    toBook: row?.toBook ?? 0,
-    missingDocument: row?.missingDocument ?? 0,
+    toBook: Number(row?.to_book ?? 0),
+    missingDocument: Number(row?.missing_document ?? 0),
   };
 }
 

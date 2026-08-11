@@ -46,6 +46,7 @@ type SummaryData = {
   };
   inboxPending: { count: number };
   transactionsToReview: { count: number };
+  missingDocuments: { count: number };
   cashBalance: { totalBalance: number; currency: string; accountCount: number };
   runway: number;
 };
