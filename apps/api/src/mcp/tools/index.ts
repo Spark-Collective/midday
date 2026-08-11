@@ -1,3 +1,4 @@
+export { registerAccountingKbTools } from "./accounting-kb";
 export { registerBankAccountTools } from "./bank-accounts";
 export { registerCategoryTools } from "./categories";
 export { registerCustomerTools } from "./customers";

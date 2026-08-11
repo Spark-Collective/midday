@@ -5123,6 +5123,60 @@ export const expenseNoteLines = pgTable(
   ],
 );
 
+// Belgian accounting knowledge graph (migration 0051), indexed from the
+// public GitHub repo. Derived and disposable; GitHub stays the only writer.
+// Not team-scoped: the practice is identical for every company here.
+export const kbDocuments = pgTable(
+  "kb_documents",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    path: text().notNull(),
+    title: text().notNull(),
+    description: text(),
+    type: text(),
+    tags: text().array().default([]).notNull(),
+    aliases: text().array().default([]).notNull(),
+    confidence: text(),
+    verifyLive: boolean("verify_live").default(false).notNull(),
+    reviewAfter: date("review_after"),
+    sources: text().array().default([]).notNull(),
+    content: text().notNull(),
+    contentSha: text("content_sha").notNull(),
+    commitSha: text("commit_sha"),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [unique("kb_documents_path_key").on(table.path)],
+);
+
+export const kbChunks = pgTable(
+  "kb_chunks",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => kbDocuments.id, { onDelete: "cascade" }),
+    position: integer().default(0).notNull(),
+    heading: text(),
+    content: text().notNull(),
+    embedding: vector({ dimensions: 768 }),
+  },
+  (table) => [index("kb_chunks_document_idx").on(table.documentId, table.position)],
+);
+
+export const kbSyncState = pgTable("kb_sync_state", {
+  repo: text().primaryKey().notNull(),
+  commitSha: text("commit_sha"),
+  indexedAt: timestamp("indexed_at", { withTimezone: true, mode: "string" }),
+  documentCount: integer("document_count").default(0).notNull(),
+  lastError: text("last_error"),
+  lastCheckedAt: timestamp("last_checked_at", {
+    withTimezone: true,
+    mode: "string",
+  }),
+});
+
 // Purchase documents (migration 0049): incoming supplier invoices and credit
 // notes as records. ERPNext-shaped: a credit note is the same record with a
 // kind flag and a link to the invoice it credits. Amounts are positive; kind

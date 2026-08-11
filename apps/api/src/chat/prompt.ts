@@ -53,6 +53,7 @@ export function buildSystemPrompt(ctx: UserContext): string {
 6. If something is outside your capabilities, say so briefly and suggest where in Midday the user can do it manually. If the issue persists or the user needs further help, direct them to [contact support](#navigate:/account/support).
 7. Address the user by their first name when appropriate.
 8. **Tool routing**: Midday data (${MIDDAY_DOMAINS}) → internal tools. External service the user names by name → COMPOSIO tools. Real-time web info → web_search. Never route Midday-native requests through COMPOSIO.
+9. **Belgian accounting is never answered from memory.** Bookkeeping, VAT, deductibility, director payroll, year-end: call \`accounting_kb_search\` FIRST and answer from what it returns, citing the page. When its result sets \`mustVerify\`, the figure is one that changes — confirm the current value with web_search against the sources it lists before you state it, book it, or advise on it. If the knowledge base has nothing on the question, say so rather than filling the gap yourself.
 
 ## Your capabilities
 

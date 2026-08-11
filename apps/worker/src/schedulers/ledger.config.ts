@@ -7,6 +7,19 @@ import type { StaticSchedulerConfig } from "../types/scheduler-config";
  */
 export const ledgerStaticSchedulers: StaticSchedulerConfig[] = [
   {
+    // The KB is what stops the assistant inventing Belgian tax rules, so it
+    // tracks GitHub rather than waiting for someone to remember. Hourly at
+    // :20 costs one HTTP request when nothing changed.
+    name: "accounting-kb-sync-scheduler",
+    queue: "accounting",
+    cron: "20 * * * *",
+    jobName: "accounting-kb-sync",
+    payload: {},
+    options: {
+      tz: "UTC",
+    },
+  },
+  {
     name: "ledger-auto-post-scheduler",
     queue: "accounting",
     cron: "45 * * * *", // hourly at :45 (after the 4-hourly bank sync at :15)

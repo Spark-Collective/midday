@@ -8,7 +8,8 @@
     "./loader": "./src/loaders/loader.ts",
     "./classifier": "./src/classifier/classifier.ts",
     "./embed": "./src/embed/embed.ts",
-    "./utils": "./src/utils.ts"
+    "./utils": "./src/utils.ts",
+    "./kb": "./src/kb/index.ts"
   },
   "scripts": {
     "clean": "rm -rf .turbo node_modules",
@@ -26,13 +27,16 @@
     "@midday/utils": "workspace:*",
     "ai": "catalog:",
     "canvas": "^3.2.0",
+    "js-yaml": "^4.1.0",
     "langchain": "^1.0.5",
     "mammoth": "^1.11.0",
     "officeparser": "5.2.2",
+    "pg": "^8.20.0",
     "unpdf": "^1.4.0",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9"
   }
 }
