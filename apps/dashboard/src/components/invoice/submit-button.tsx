@@ -43,6 +43,7 @@ import {
   type RecurringConfig,
   RecurringConfigPanel,
 } from "./recurring-config";
+import { SendSummary } from "./send-summary";
 
 type Props = {
   isSubmitting: boolean;
@@ -389,6 +390,9 @@ export function SubmitButton({ isSubmitting, disabled, className }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* spark: spell out what this button actually does, Peppol leg included */}
+      <SendSummary />
+
       <div className="flex divide-x">
         <BaseSubmitButton
           isSubmitting={isSubmitting}
